@@ -4,14 +4,14 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
 
-**현재 버전:** `0.3.1-volume-remap` (versionCode 6) — Fit3 볼륨 ↑/↓를 MediaSession 원격 볼륨(VolumeProvider **ABSOLUTE**)으로 리맵; remVol/step·로그 동기화 수정.
+**현재 버전:** `0.3.2-ui` (versionCode 7) — 대시보드에 설치 버전(versionName/versionCode) 표시.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.3.1-volume-remap-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.3.1/Fit3Proxy-0.3.1-volume-remap-debug.apk) (`v0.3.1` / versionName `0.3.1-volume-remap` / versionCode `6`)
+- **현재 버전 다운로드:** [Fit3Proxy-0.3.2-ui-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.3.2/Fit3Proxy-0.3.2-ui-debug.apk) (`v0.3.2` / versionName `0.3.2-ui` / versionCode `7`)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 

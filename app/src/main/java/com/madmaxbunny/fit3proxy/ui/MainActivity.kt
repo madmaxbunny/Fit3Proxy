@@ -10,6 +10,7 @@ import android.widget.ScrollView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.madmaxbunny.fit3proxy.BuildConfig
 import com.madmaxbunny.fit3proxy.Fit3ProxyApp
 import com.madmaxbunny.fit3proxy.R
 import com.madmaxbunny.fit3proxy.databinding.ActivityMainBinding
@@ -49,6 +50,7 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
         sessionManager.eventListener = this
 
         ensureNotificationPermission()
+        bindAppVersion()
         bindUi()
         observeSession()
         observeEventLog()
@@ -66,6 +68,16 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
 
     override fun onEvent(message: String) {
         mainHandler.post { appendLog(message) }
+    }
+
+    private fun bindAppVersion() {
+        val label = getString(
+            R.string.app_version_format,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE
+        )
+        binding.appVersionLabel.text = label
+        supportActionBar?.subtitle = label
     }
 
     private fun bindUi() {
