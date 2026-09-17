@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -21,6 +22,10 @@ import com.madmaxbunny.fit3proxy.model.SlotRepository
  *
  * Soft AudioFocus: request/abandon only while the dashboard switch keeps the
  * session active — avoids fighting Spotify/YouTube when idle (SOW §6.2).
+ *
+ * Media callbacks stay lightweight: update PlaybackState/Metadata immediately,
+ * defer UI/event-log work. Do NOT rebuild FGS notifications here — that floods
+ * Galaxy Wearable and freezes the Fit3 music UI.
  */
 class Fit3MediaSessionManager(
     private val context: Context,
@@ -40,6 +45,16 @@ class Fit3MediaSessionManager(
     private var isPlayingVisual: Boolean = false
     private var active: Boolean = false
 
+    /** Cached actions bitmask — avoid reallocating on every button press. */
+    private val transportActions =
+        PlaybackStateCompat.ACTION_PLAY or
+            PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_FAST_FORWARD or
+            PlaybackStateCompat.ACTION_REWIND
+
     var eventListener: EventListener? = null
 
     private val _metadataPreview = MutableLiveData<MetadataPreview>()
@@ -57,45 +72,46 @@ class Fit3MediaSessionManager(
 
     private val callback = object : MediaSessionCompat.Callback() {
         override fun onPlay() {
-            logEvent("onPlay() → toggle slot")
-            handleToggle()
+            // Ack Fit3 immediately with state, then cheap slot work
             isPlayingVisual = true
+            handleToggle()
             publishPlaybackState()
             publishMetadata()
+            logEventDeferred("onPlay() → toggle slot")
         }
 
         override fun onPause() {
-            logEvent("onPause() → toggle slot")
-            handleToggle()
             isPlayingVisual = false
+            handleToggle()
             publishPlaybackState()
             publishMetadata()
+            logEventDeferred("onPause() → toggle slot")
         }
 
         override fun onSkipToNext() {
-            logEvent("onSkipToNext() → carousel next")
             slotRepository.next()
             publishMetadata()
             publishPlaybackState()
+            logEventDeferred("onSkipToNext() → carousel next")
         }
 
         override fun onSkipToPrevious() {
-            logEvent("onSkipToPrevious() → carousel previous")
             slotRepository.previous()
             publishMetadata()
             publishPlaybackState()
+            logEventDeferred("onSkipToPrevious() → carousel previous")
         }
 
         override fun onFastForward() {
-            logEvent("onFastForward() → brightness +10%")
             slotRepository.brightnessDelta(+10)
             publishMetadata()
+            logEventDeferred("onFastForward() → brightness +10%")
         }
 
         override fun onRewind() {
-            logEvent("onRewind() → brightness -10%")
             slotRepository.brightnessDelta(-10)
             publishMetadata()
+            logEventDeferred("onRewind() → brightness -10%")
         }
     }
 
@@ -103,13 +119,13 @@ class Fit3MediaSessionManager(
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                logEvent("AudioFocus lost ($change) — keeping soft session paused visually")
+                logEventDeferred("AudioFocus lost ($change) — keeping soft session paused visually")
                 hasAudioFocus = false
                 isPlayingVisual = false
                 publishPlaybackState()
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
-                logEvent("AudioFocus gained")
+                logEventDeferred("AudioFocus gained")
                 hasAudioFocus = true
             }
         }
@@ -165,9 +181,33 @@ class Fit3MediaSessionManager(
 
     fun getSessionToken(): MediaSessionCompat.Token? = mediaSession?.sessionToken
 
+    /**
+     * Brief playback-state nudge so Fit3 / Wearable wakes for an emergency alert.
+     * No-op when session is off. Does not touch FGS notifications.
+     */
+    fun pulseForAlert() {
+        if (!active || mediaSession == null) return
+        val session = mediaSession ?: return
+        // Tiny position bump + re-assert PLAYING/PAUSED so controllers refresh
+        val state = if (isPlayingVisual) {
+            PlaybackStateCompat.STATE_PLAYING
+        } else {
+            PlaybackStateCompat.STATE_PAUSED
+        }
+        val pulsePos = PLAYBACK_POSITION_MS + (SystemClock.elapsedRealtime() % 500)
+        session.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(transportActions)
+                .setState(state, pulsePos, if (isPlayingVisual) 1.0f else 0f)
+                .build()
+        )
+        logEventDeferred("pulseForAlert() — MediaSession nudge for Fit3 wake")
+    }
+
     private fun handleToggle() {
         val slot = slotRepository.toggleCurrent()
-        logEvent("toggle → ${slot.title} = ${if (slot.isOn) "ON" else "OFF"}")
+        // Deferred so MediaSession ack is not blocked by string work / listeners
+        logEventDeferred("toggle → ${slot.title} = ${if (slot.isOn) "ON" else "OFF"}")
     }
 
     private fun publishMetadata() {
@@ -180,6 +220,7 @@ class Fit3MediaSessionManager(
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, FAKE_DURATION_MS)
             .build()
         mediaSession?.setMetadata(metadata)
+        // postValue is async — OK for phone UI; must not trigger Wearable notification flood
         _metadataPreview.postValue(
             MetadataPreview(slot.title, slot.artist, album, isPlayingVisual)
         )
@@ -192,17 +233,9 @@ class Fit3MediaSessionManager(
         } else {
             PlaybackStateCompat.STATE_PAUSED
         }
-        val actions =
-            PlaybackStateCompat.ACTION_PLAY or
-                PlaybackStateCompat.ACTION_PAUSE or
-                PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackStateCompat.ACTION_FAST_FORWARD or
-                PlaybackStateCompat.ACTION_REWIND
 
         val playbackState = PlaybackStateCompat.Builder()
-            .setActions(actions)
+            .setActions(transportActions)
             .setState(state, PLAYBACK_POSITION_MS, if (isPlayingVisual) 1.0f else 0f)
             .build()
         mediaSession?.setPlaybackState(playbackState)
@@ -254,6 +287,14 @@ class Fit3MediaSessionManager(
     private fun logEvent(message: String) {
         Log.i(TAG, message)
         eventListener?.onEvent(message)
+    }
+
+    /** Non-blocking: never stall MediaSession callback ack on UI/logging. */
+    private fun logEventDeferred(message: String) {
+        Log.i(TAG, message)
+        mainHandler.post {
+            eventListener?.onEvent(message)
+        }
     }
 
     /** Expose current slot for notification text. */

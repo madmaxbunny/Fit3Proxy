@@ -4,6 +4,8 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
 
+**현재 버전:** `0.2.1-phase2-fix` (versionCode 3) — Fit3 긴급 햅틱 + 미디어 버튼 프리즈 수정.
+
 ## 무엇을 하나요?
 
 ### Phase 1 — MediaSession
@@ -73,7 +75,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    - **음악 제어 / 미디어 컨트롤러**에 이 앱이 노출되는지 확인  
 3. 핏3에서 음악(미디어) 화면을 엽니다.  
    Title/Artist가 대시보드 미리보기와 같으면 성공입니다.
-4. Play·Next·Prev·FF·REW를 눌러 폰 앱의 **이벤트 로그**와 Logcat 태그 `Fit3MediaSession`에 콜백이 찍히는지 확인합니다.
+4. Play·Next·Prev·FF·REW를 눌러 폰 앱의 **이벤트 로그**와 Logcat 태그 `Fit3MediaSession`에 콜백이 찍히는지 확인합니다.  
+   **0.2.1+:** 버튼이 **즉시** 반응해야 합니다 (수 초 UI 프리즈 없어야 함). Fit3 음악 화면은 MediaSession 메타데이터만 갱신하고, FGS 상태 알림은 Wearable 재동기화 부하를 줄이기 위해 디바운스됩니다.
 5. 스위치를 OFF 하면 세션·AudioFocus·FGS가 해제됩니다 (soft AudioFocus).
 
 ### B. Phase 2 — Notification Actions & 긴급 진동
@@ -87,7 +90,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    → 폰 앱 **이벤트 로그**에 `NotificationAction: [승인] …` 등이 기록되고, Logcat 태그 `Fit3NotifAction` / `Fit3EventLog`에도 남습니다.
 4. 대시보드의 **긴급 알림 테스트 (Fit3 진동)** 버튼을 누릅니다.  
    → 고우선순위 알림이 발행되고, 핏3에서 **뚜렷한 햅틱(진동)** 이 와야 합니다.  
-   (상태 채널 업데이트와 달리 긴급 채널만 진동합니다.)
+   (상태 채널 업데이트와 달리 긴급 채널만 진동합니다.)  
+   **0.2.1+:** 알림에 명시적 `setVibrate` + `WearableExtender` + cancel-before-notify + (세션 ON 시) MediaSession pulse를 사용합니다.  
+   폰 셰이드에만 뜨고 핏3가 무반응이면 Galaxy Wearable에서 Fit3 Proxy 알림이 **허용**인지, 밴드 진동이 켜져 있는지 다시 확인하세요.
 5. 긴급 알림 상세에서 `[재부팅]`/`[승인]`/`[스누즈]`/`[답장]`을 눌러 로그를 확인합니다.  
    `[스누즈]` 또는 답장 시 긴급 알림이 해제됩니다.
 6. 상태 알림만 갱신될 때(Next/Prev로 메타데이터 변경) **핏3가 반복 진동하지 않는지** 확인합니다 (`setOnlyAlertOnce` + 무음 채널).
@@ -115,6 +120,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 **applicationId:** `com.madmaxbunny.fit3proxy`
 
-**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`).
+**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded.
 
-**Fit3 verify (Phase 2):** In Galaxy Wearable, allow **Fit3 Proxy** notifications. Expand the ongoing status notification — tap `[재부팅]` / `[승인]` / `[스누즈]` and confirm the in-app event log. Tap **긴급 알림 테스트** on the phone dashboard — Fit3 should vibrate with the emergency channel pattern; use alert actions / RemoteInput reply and confirm logs (`Fit3NotifAction`). Routine status updates must **not** keep buzzing the band.
+**Fit3 verify (Phase 2):** In Galaxy Wearable, allow **Fit3 Proxy** notifications. Expand the ongoing status notification — tap `[재부팅]` / `[승인]` / `[스누즈]` and confirm the in-app event log. Tap **긴급 알림 테스트** on the phone dashboard — Fit3 should **vibrate/haptic** (not phone-shade-only); use alert actions / RemoteInput reply and confirm logs (`Fit3NotifAction`). Routine status updates must **not** keep buzzing the band.
+
+**0.2.1-phase2-fix:** Emergency alert uses explicit vibrate + WearableExtender + channel `fit3_alert_emergency_v2`; media hot-path avoids per-press FGS `notify()` storms.

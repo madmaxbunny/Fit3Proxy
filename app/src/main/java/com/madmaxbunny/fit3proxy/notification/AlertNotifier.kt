@@ -12,7 +12,11 @@ import com.madmaxbunny.fit3proxy.ui.MainActivity
 
 /**
  * Fires a high-priority emergency alert on the ALERT channel so Fit3
- * receives a distinct haptic (vibration pattern on the channel).
+ * receives a distinct haptic (vibration on channel + notification extras).
+ *
+ * Galaxy Wearable / Fit3 often ignore alerts that lack an explicit vibrate
+ * pattern or that look like silent updates — hence setVibrate + setSilent(false)
+ * + WearableExtender, cancel-before-notify, and an optional MediaSession pulse.
  */
 object AlertNotifier {
 
@@ -20,35 +24,65 @@ object AlertNotifier {
         val appCtx = context.applicationContext
         val title = appCtx.getString(R.string.alert_title)
         val body = message ?: appCtx.getString(R.string.alert_body_test)
+        val nm = NotificationManagerCompat.from(appCtx)
+
+        // Force a "new" delivery to Wearable (same-id updates are often silent on Fit3)
+        nm.cancel(Fit3ProxyApp.ALERT_NOTIFICATION_ID)
 
         val builder = NotificationCompat.Builder(appCtx, Fit3ProxyApp.ALERT_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
+            .setTicker(title) // helps some OEM bridges treat this as interruptive
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
+            .setSilent(false)
+            .setVibrate(Fit3ProxyApp.ALERT_VIBRATION_PATTERN)
+            .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
             .setContentIntent(openAppPendingIntent(appCtx))
-            .setDeleteIntent(actionPendingIntent(appCtx, NotificationActionReceiver.ACTION_DISMISS_ALERT, NotificationActionReceiver.REQ_DISMISS))
+            .setDeleteIntent(
+                actionPendingIntent(
+                    appCtx,
+                    NotificationActionReceiver.ACTION_DISMISS_ALERT,
+                    NotificationActionReceiver.REQ_DISMISS
+                )
+            )
+            .extend(
+                NotificationCompat.WearableExtender()
+                    .setContentIntentAvailableOffline(true)
+            )
 
         // Interactive actions visible on Fit3 notification detail
         builder.addAction(
             0,
             appCtx.getString(R.string.action_reboot),
-            actionPendingIntent(appCtx, NotificationActionReceiver.ACTION_REBOOT, NotificationActionReceiver.REQ_REBOOT)
+            actionPendingIntent(
+                appCtx,
+                NotificationActionReceiver.ACTION_REBOOT,
+                NotificationActionReceiver.REQ_REBOOT
+            )
         )
         builder.addAction(
             0,
             appCtx.getString(R.string.action_approve),
-            actionPendingIntent(appCtx, NotificationActionReceiver.ACTION_APPROVE, NotificationActionReceiver.REQ_APPROVE)
+            actionPendingIntent(
+                appCtx,
+                NotificationActionReceiver.ACTION_APPROVE,
+                NotificationActionReceiver.REQ_APPROVE
+            )
         )
         builder.addAction(
             0,
             appCtx.getString(R.string.action_snooze),
-            actionPendingIntent(appCtx, NotificationActionReceiver.ACTION_SNOOZE, NotificationActionReceiver.REQ_SNOOZE)
+            actionPendingIntent(
+                appCtx,
+                NotificationActionReceiver.ACTION_SNOOZE,
+                NotificationActionReceiver.REQ_SNOOZE
+            )
         )
 
         // Optional RemoteInput quick-reply stub
@@ -65,11 +99,13 @@ object AlertNotifier {
             .build()
         builder.addAction(replyAction)
 
-        NotificationManagerCompat.from(appCtx)
-            .notify(Fit3ProxyApp.ALERT_NOTIFICATION_ID, builder.build())
+        nm.notify(Fit3ProxyApp.ALERT_NOTIFICATION_ID, builder.build())
+
+        // Nudge Fit3 media surface awake when session is already on (Wearable quirk)
+        (appCtx as? Fit3ProxyApp)?.mediaSessionManager?.pulseForAlert()
 
         (appCtx as? Fit3ProxyApp)?.eventLogStore?.emit(
-            "AlertNotifier: 긴급 알림 발행 (channel=${Fit3ProxyApp.ALERT_CHANNEL_ID})"
+            "AlertNotifier: 긴급 알림 발행 (channel=${Fit3ProxyApp.ALERT_CHANNEL_ID}, vibrate=on)"
         )
     }
 

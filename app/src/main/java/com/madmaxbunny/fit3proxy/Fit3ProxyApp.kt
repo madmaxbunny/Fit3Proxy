@@ -3,6 +3,7 @@ package com.madmaxbunny.fit3proxy
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.graphics.Color
 import android.os.Build
 import com.madmaxbunny.fit3proxy.log.EventLogStore
 import com.madmaxbunny.fit3proxy.model.SlotRepository
@@ -14,6 +15,9 @@ import com.madmaxbunny.fit3proxy.session.Fit3MediaSessionManager
  * Phase 2 channels:
  *  - STATUS (silent / LOW): ongoing FGS — setOnlyAlertOnce, no vibration
  *  - ALERT (HIGH): emergency haptic with distinct vibration pattern
+ *
+ * Note: Android freezes channel importance/vibration after first create.
+ * ALERT_CHANNEL_ID is versioned (…_v2) so upgrades pick up corrected settings.
  */
 class Fit3ProxyApp : Application() {
 
@@ -38,6 +42,13 @@ class Fit3ProxyApp : Application() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java)
 
+        // Drop legacy alert channel id if present (importance/vibrate immutable after create)
+        try {
+            nm.deleteNotificationChannel(ALERT_CHANNEL_ID_LEGACY)
+        } catch (_: Exception) {
+            // ignore
+        }
+
         val statusChannel = NotificationChannel(
             STATUS_CHANNEL_ID,
             getString(R.string.status_channel_name),
@@ -48,6 +59,7 @@ class Fit3ProxyApp : Application() {
             enableVibration(false)
             setSound(null, null)
             enableLights(false)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
 
         // Distinct emergency haptic for Fit3 (and phone): short-long-short pattern
@@ -61,6 +73,14 @@ class Fit3ProxyApp : Application() {
             enableVibration(true)
             vibrationPattern = ALERT_VIBRATION_PATTERN
             enableLights(true)
+            lightColor = Color.RED
+            setSound(null, null) // haptic-focused; avoid phone ringtone fighting Wearable
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setAllowBubbles(false)
+            }
+            // Interruptive even under DND when policy allows (no-op without ACCESS_NOTIFICATION_POLICY)
+            setBypassDnd(true)
         }
 
         nm.createNotificationChannel(statusChannel)
@@ -73,7 +93,9 @@ class Fit3ProxyApp : Application() {
         /** @deprecated Use [STATUS_CHANNEL_ID]; kept for older installs that may still reference it. */
         const val CHANNEL_ID = STATUS_CHANNEL_ID
 
-        const val ALERT_CHANNEL_ID = "fit3_alert_emergency"
+        /** Legacy id from 0.2.0 — deleted on upgrade so Wearable sees a fresh HIGH channel. */
+        const val ALERT_CHANNEL_ID_LEGACY = "fit3_alert_emergency"
+        const val ALERT_CHANNEL_ID = "fit3_alert_emergency_v2"
 
         const val NOTIFICATION_ID = 1001
         const val ALERT_NOTIFICATION_ID = 1002
