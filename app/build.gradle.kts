@@ -11,8 +11,8 @@ android {
         applicationId = "com.madmaxbunny.fit3proxy"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.3.0-volume-remap"
+        versionCode = 6
+        versionName = "0.3.1-volume-remap"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -19,15 +19,21 @@ import com.madmaxbunny.fit3proxy.model.ControlSlot
 import com.madmaxbunny.fit3proxy.model.SlotRepository
 
 /**
- * Phase 1 MediaSession prototype + remote volume remap (0.3.0).
+ * Phase 1 MediaSession prototype + remote volume remap (0.3.1).
  *
  * Soft AudioFocus: request/abandon only while the dashboard switch keeps the
  * session active — avoids fighting Spotify/YouTube when idle (SOW §6.2).
  *
  * While session is ON, playback volume is routed to [VolumeProviderCompat]
- * (RELATIVE) so Fit3 volume UP/DOWN become app events instead of (only)
- * changing STREAM_MUSIC. On stop, [setPlaybackToLocal] restores normal phone
- * media volume behavior.
+ * (ABSOLUTE) so Fit3 / phone volume keys that hit the remote provider become
+ * app events (volumeStep ±10) instead of only changing STREAM_MUSIC.
+ * On stop, [setPlaybackToLocal] restores normal phone media volume behavior.
+ *
+ * 0.3.0 used RELATIVE; on Samsung/Fit3 the system remote-volume bar often
+ * appeared without delivering [VolumeProviderCompat.onAdjustVolume], so remVol
+ * stayed stuck. 0.3.1 uses ABSOLUTE, always calls [setCurrentVolume] after each
+ * change (synchronously in the provider callback), and hops metadata/UI onto
+ * the main looper.
  *
  * Media callbacks stay lightweight: update PlaybackState/Metadata immediately,
  * defer UI/event-log work. Do NOT rebuild FGS notifications here — that floods
@@ -53,7 +59,9 @@ class Fit3MediaSessionManager(
     private var active: Boolean = false
 
     /** Demo counter shown on Fit3 metadata / phone dashboard (0–100). */
+    @Volatile
     private var volumeStep: Int = 50
+    @Volatile
     private var lastVolumeEvent: String = "—"
 
     /** Cached actions bitmask — avoid reallocating on every button press. */
@@ -174,8 +182,9 @@ class Fit3MediaSessionManager(
         publishPlaybackState()
         logEvent("MediaSession active — Fit3 music widget should show metadata")
         logEvent(
-            "Remote volume ON (RELATIVE) — Fit3 volume UP/DOWN → VolumeProvider " +
-                "(step=$volumeStep). Phone STREAM_MUSIC remapped while session active."
+            "Remote volume ON (ABSOLUTE) — Fit3/phone volume → VolumeProvider " +
+                "(step=$volumeStep, delta=±$VOLUME_DELTA). " +
+                "System remote-volume bar may appear; remVol + event log are the real feedback."
         )
     }
 
@@ -240,73 +249,101 @@ class Fit3MediaSessionManager(
     }
 
     private fun attachRemoteVolume(session: MediaSessionCompat) {
+        // ABSOLUTE: Samsung/Fit3 often shows the remote volume panel for RELATIVE
+        // without invoking onAdjustVolume. ABSOLUTE still receives onAdjustVolume
+        // for key presses and onSetVolumeTo for absolute UI / OEM paths.
         val provider = object : VolumeProviderCompat(
-            VOLUME_CONTROL_RELATIVE,
+            VOLUME_CONTROL_ABSOLUTE,
             VOLUME_MAX,
             volumeStep
         ) {
             override fun onAdjustVolume(direction: Int) {
-                handleRemoteVolumeAdjust(direction)
+                // May run on a binder thread. Update provider volume synchronously
+                // so the system remote-volume UI stays in sync, then hop UI work.
+                Log.i(
+                    TAG,
+                    "onAdjustVolume(direction=$direction) thread=${Thread.currentThread().name}"
+                )
+                val delta = directionToDelta(direction)
+                val before = volumeStep
+                val after = if (delta == 0) {
+                    before
+                } else {
+                    (before + delta).coerceIn(0, VOLUME_MAX)
+                }
+                volumeStep = after
+                // Critical: always re-assert so session/UI do not treat adjust as no-op.
+                setCurrentVolume(after)
+
+                val label = when {
+                    delta > 0 -> "volumeUp"
+                    delta < 0 -> "volumeDown"
+                    else -> "volumeSame"
+                }
+                lastVolumeEvent = if (delta == 0) {
+                    "$label (no-op, step=$after)"
+                } else {
+                    "$label → step=$after (was $before)"
+                }
+
+                mainHandler.post {
+                    publishMetadata()
+                    publishPlaybackState(nudgePosition = true)
+                    if (delta == 0) {
+                        logEvent(
+                            "onAdjustVolume(dir=$direction) → no-op | volumeStep=$after"
+                        )
+                    } else {
+                        logEvent(
+                            "$label → custom action | volumeStep=$after " +
+                                "(dir=$direction, delta=$delta, setCurrentVolume, ABSOLUTE)"
+                        )
+                    }
+                }
             }
 
             override fun onSetVolumeTo(volume: Int) {
-                // Absolute path (some controllers); keep demo counter in sync.
-                volumeStep = volume.coerceIn(0, VOLUME_MAX)
-                currentVolume = volumeStep
-                lastVolumeEvent = "volumeSet → $volumeStep"
-                publishMetadata()
-                publishPlaybackState(nudgePosition = true)
-                logEventDeferred(
-                    "onSetVolumeTo($volume) → volumeStep=$volumeStep (custom action)"
+                Log.i(
+                    TAG,
+                    "onSetVolumeTo(volume=$volume) thread=${Thread.currentThread().name}"
                 )
+                val before = volumeStep
+                val after = volume.coerceIn(0, VOLUME_MAX)
+                volumeStep = after
+                setCurrentVolume(after)
+
+                val label = when {
+                    after > before -> "volumeUp"
+                    after < before -> "volumeDown"
+                    else -> "volumeSet"
+                }
+                lastVolumeEvent = "$label → step=$after (setTo, was $before)"
+
+                mainHandler.post {
+                    publishMetadata()
+                    publishPlaybackState(nudgePosition = true)
+                    logEvent(
+                        "$label → custom action | volumeStep=$after " +
+                            "(onSetVolumeTo($volume), setCurrentVolume, ABSOLUTE)"
+                    )
+                }
             }
         }
         volumeProvider = provider
         session.setPlaybackToRemote(provider)
-        logEvent("setPlaybackToRemote(VolumeProviderCompat RELATIVE, step=$volumeStep)")
+        // Re-assert so session/UI start in sync with our demo counter.
+        provider.setCurrentVolume(volumeStep)
+        logEvent(
+            "setPlaybackToRemote(VolumeProviderCompat ABSOLUTE, max=$VOLUME_MAX, " +
+                "current=$volumeStep) — expect volumeUp/volumeDown in log on key press"
+        )
     }
 
-    /**
-     * Fit3 / Wearable volume keys → ADJUST_RAISE / ADJUST_LOWER (or SAME).
-     * Does not change system STREAM_MUSIC; updates demo volumeStep + metadata.
-     */
-    private fun handleRemoteVolumeAdjust(direction: Int) {
-        when (direction) {
-            AudioManager.ADJUST_RAISE -> {
-                volumeStep = (volumeStep + 1).coerceAtMost(VOLUME_MAX)
-                lastVolumeEvent = "volumeUp → custom action (step=$volumeStep)"
-                volumeProvider?.currentVolume = volumeStep
-                publishMetadata()
-                publishPlaybackState(nudgePosition = true)
-                logEventDeferred(
-                    "volumeUp → custom action | volumeStep=$volumeStep " +
-                        "(ADJUST_RAISE, remote VolumeProvider)"
-                )
-            }
-            AudioManager.ADJUST_LOWER -> {
-                volumeStep = (volumeStep - 1).coerceAtLeast(0)
-                lastVolumeEvent = "volumeDown → custom action (step=$volumeStep)"
-                volumeProvider?.currentVolume = volumeStep
-                publishMetadata()
-                publishPlaybackState(nudgePosition = true)
-                logEventDeferred(
-                    "volumeDown → custom action | volumeStep=$volumeStep " +
-                        "(ADJUST_LOWER, remote VolumeProvider)"
-                )
-            }
-            AudioManager.ADJUST_SAME -> {
-                lastVolumeEvent = "volumeSame (no-op, step=$volumeStep)"
-                logEventDeferred(
-                    "onAdjustVolume(ADJUST_SAME) → no-op | volumeStep=$volumeStep"
-                )
-            }
-            else -> {
-                lastVolumeEvent = "volumeAdjust($direction) step=$volumeStep"
-                logEventDeferred(
-                    "onAdjustVolume(direction=$direction) → volumeStep=$volumeStep"
-                )
-            }
-        }
+    /** Map ADJUST_* / OEM ±1-style directions to ±[VOLUME_DELTA] (0 = no-op). */
+    private fun directionToDelta(direction: Int): Int = when {
+        direction == AudioManager.ADJUST_RAISE || direction > 0 -> VOLUME_DELTA
+        direction == AudioManager.ADJUST_LOWER || direction < 0 -> -VOLUME_DELTA
+        else -> 0
     }
 
     private fun handleToggle() {
@@ -449,5 +486,7 @@ class Fit3MediaSessionManager(
         private const val FAKE_DURATION_MS = 60_000L
         private const val PLAYBACK_POSITION_MS = 1_000L
         private const val VOLUME_MAX = 100
+        /** Demo step size per volume key (clamp 0–100). */
+        private const val VOLUME_DELTA = 10
     }
 }
