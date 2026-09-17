@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
+import android.media.AudioManager
 import android.widget.ScrollView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +26,10 @@ import java.util.Locale
 /**
  * Material dashboard: session switch, live metadata preview, alert test, event log.
  * Phase 2 adds emergency alert fire + Notification Action event logging.
+ *
+ * Phone hardware volume keys are handled here (STREAM_MUSIC + FLAG_SHOW_UI) and
+ * consumed so they do not reach the MediaSession VolumeProvider / remVol path.
+ * Fit3 / Wearable remote volume still goes through VolumeProviderCompat.
  */
 class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener {
 
@@ -57,6 +63,49 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
 
         appendLog("대시보드 준비 완료 (Phase 2 Notification Actions)")
         appendLog("슬롯 ${app.slotRepository.size}개 로드 (인메모리 데모)")
+    }
+
+
+    /**
+     * Foreground phone volume buttons → normal STREAM_MUSIC UX.
+     * Consume so MediaSession remote VolumeProvider does not remap them to remVol.
+     * Fit3/Wearable volume still hits VolumeProviderCompat.onAdjustVolume / onSetVolumeTo.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_VOLUME_MUTE -> {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    // Include key-repeat so hold-to-change matches system volume UX.
+                    adjustLocalMusicVolume(event.keyCode, logEvent = event.repeatCount == 0)
+                }
+                // Consume DOWN and UP (and repeats) so the session never sees them.
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun adjustLocalMusicVolume(keyCode: Int, logEvent: Boolean) {
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val direction = when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> AudioManager.ADJUST_RAISE
+            KeyEvent.KEYCODE_VOLUME_DOWN -> AudioManager.ADJUST_LOWER
+            KeyEvent.KEYCODE_VOLUME_MUTE -> AudioManager.ADJUST_TOGGLE_MUTE
+            else -> return
+        }
+        audioManager.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            direction,
+            AudioManager.FLAG_SHOW_UI
+        )
+        // Do not touch remVol / volumeStep — phone local volume only.
+        if (logEvent) {
+            appendLog(
+                "phone VOLUME key → STREAM_MUSIC adjust (local UI; remVol unchanged)"
+            )
+        }
     }
 
     override fun onDestroy() {

@@ -82,6 +82,14 @@
                 android:textAppearance="?attr/textAppearanceBodySmall"
                 android:textColor="?attr/colorSecondary" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/hint_volume_split"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorSecondary" />
+
             <!-- Live metadata preview -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

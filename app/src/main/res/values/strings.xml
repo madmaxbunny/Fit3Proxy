@@ -8,7 +8,7 @@
     <string name="preview_title_label">Title (핏3 표시)</string>
     <string name="preview_artist_label">Artist (상태)</string>
     <string name="preview_album_label">Album (메뉴)</string>
-    <string name="preview_volume_label">Remote volume (Fit3 ↑/↓)</string>
+    <string name="preview_volume_label">Fit3 remVol (밴드 ↑/↓ · 폰 키 ≠ remVol)</string>
     <string name="preview_volume_placeholder">—</string>
     <string name="event_log_label">이벤트 로그</string>
     <string name="clear_log">로그 지우기</string>
@@ -38,6 +38,7 @@
     <string name="action_reply_hint">빠른 답장…</string>
 
     <string name="hint_wearable">Galaxy Wearable에서 이 앱의 알림·음악 제어 권한을 허용하세요.</string>
+    <string name="hint_volume_split">세션 ON: Fit3 볼륨 → remVol 리맵. 앱이 열린 상태에서 폰 볼륨 키 → 일반 STREAM_MUSIC(시스템 볼륨 바). 백그라운드에서는 폰 키가 원격 remVol로 갈 수 있음.</string>
     <string name="app_version_format">버전 %1$s (code %2$d)</string>
     <string name="app_version_placeholder">버전 —</string>
 </resources>

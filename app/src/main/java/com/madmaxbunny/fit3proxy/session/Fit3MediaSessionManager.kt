@@ -25,9 +25,11 @@ import com.madmaxbunny.fit3proxy.model.SlotRepository
  * session active — avoids fighting Spotify/YouTube when idle (SOW §6.2).
  *
  * While session is ON, playback volume is routed to [VolumeProviderCompat]
- * (ABSOLUTE) so Fit3 / phone volume keys that hit the remote provider become
- * app events (volumeStep ±10) instead of only changing STREAM_MUSIC.
- * On stop, [setPlaybackToLocal] restores normal phone media volume behavior.
+ * (ABSOLUTE) so Fit3 / Wearable volume that hits the remote provider becomes
+ * app events (volumeStep ±10 / remVol) instead of only changing STREAM_MUSIC.
+ * Phone hardware volume keys are intercepted in [com.madmaxbunny.fit3proxy.ui.MainActivity]
+ * (foreground) and adjust local STREAM_MUSIC with FLAG_SHOW_UI — they must not
+ * change remVol. On stop, [setPlaybackToLocal] restores normal phone media volume.
  *
  * 0.3.0 used RELATIVE; on Samsung/Fit3 the system remote-volume bar often
  * appeared without delivering [VolumeProviderCompat.onAdjustVolume], so remVol
@@ -182,9 +184,10 @@ class Fit3MediaSessionManager(
         publishPlaybackState()
         logEvent("MediaSession active — Fit3 music widget should show metadata")
         logEvent(
-            "Remote volume ON (ABSOLUTE) — Fit3/phone volume → VolumeProvider " +
+            "Remote volume ON (ABSOLUTE) — Fit3/Wearable volume → VolumeProvider " +
                 "(step=$volumeStep, delta=±$VOLUME_DELTA). " +
-                "System remote-volume bar may appear; remVol + event log are the real feedback."
+                "Phone HW volume keys (app foreground) → STREAM_MUSIC local; remVol unchanged. " +
+                "System remote-volume bar may appear for Fit3; remVol + event log are the real feedback."
         )
     }
 
