@@ -1,7 +1,9 @@
 package com.madmaxbunny.fit3proxy.model
 
 /**
- * Hardcoded Phase 1 demo slots (SOW examples). No persistence / network.
+ * Hardcoded Phase 1 demo slots + 2D [ControlMatrix] (0.4.0).
+ * Axis A: Next/Prev → slotIndex. Axis B: Volume ↑/↓ → per-slot level.
+ * No persistence / network.
  */
 class SlotRepository {
 
@@ -40,33 +42,21 @@ class SlotRepository {
         )
     )
 
-    private var currentIndex: Int = 0
+    val matrix: ControlMatrix = ControlMatrix(slots)
 
-    val size: Int get() = slots.size
+    val size: Int get() = matrix.rowCount
 
-    val currentIndexZeroBased: Int get() = currentIndex
+    val currentIndexZeroBased: Int get() = matrix.currentSlotIndex
 
-    fun current(): ControlSlot = slots[currentIndex]
+    fun current(): ControlSlot = matrix.currentSlot()
 
-    fun next(): ControlSlot {
-        currentIndex = (currentIndex + 1) % slots.size
-        return current()
-    }
+    fun next(): ControlSlot = matrix.nextSlot()
 
-    fun previous(): ControlSlot {
-        currentIndex = if (currentIndex == 0) slots.size - 1 else currentIndex - 1
-        return current()
-    }
+    fun previous(): ControlSlot = matrix.previousSlot()
 
-    fun toggleCurrent(): ControlSlot {
-        current().toggle()
-        return current()
-    }
+    fun toggleCurrent(): ControlSlot = matrix.toggleCurrent()
 
-    fun brightnessDelta(delta: Int): ControlSlot {
-        current().adjustBrightness(delta)
-        return current()
-    }
+    fun brightnessDelta(delta: Int): ControlSlot = matrix.brightnessDelta(delta)
 
-    fun allSlots(): List<ControlSlot> = slots.toList()
+    fun allSlots(): List<ControlSlot> = matrix.allSlots()
 }

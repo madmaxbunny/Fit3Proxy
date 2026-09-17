@@ -162,6 +162,30 @@
                         android:textStyle="bold" />
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/preview_matrix_label"
+                        android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+                    <TextView
+                        android:id="@+id/tvMatrixPosition"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_matrix_placeholder"
+                        android:textAppearance="?attr/textAppearanceBodyLarge"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvMatrixGrid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="monospace"
+                        android:text="@string/preview_matrix_placeholder"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                    <TextView
                         android:id="@+id/appVersionLabel"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

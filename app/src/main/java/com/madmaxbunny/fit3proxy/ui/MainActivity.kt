@@ -63,6 +63,10 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
 
         appendLog("대시보드 준비 완료 (Phase 2 Notification Actions)")
         appendLog("슬롯 ${app.slotRepository.size}개 로드 (인메모리 데모)")
+        appendLog(
+            "2D 매트릭스 ${app.slotRepository.matrix.rowCount}×${app.slotRepository.matrix.colCount} " +
+                "(Next/Prev=Axis A, Fit3 vol=Axis B per-slot)"
+        )
     }
 
 
@@ -168,7 +172,9 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
             binding.tvPreviewArtist.text = preview.artist
             binding.tvPreviewAlbum.text = preview.album
             binding.tvLastVolumeEvent.text =
-                "step=${preview.volumeStep} | ${preview.lastVolumeEvent}"
+                "remVol=${preview.volumeStep} | ${preview.lastVolumeEvent}"
+            binding.tvMatrixPosition.text = preview.matrixPosition
+            binding.tvMatrixGrid.text = preview.matrixGrid
         }
         sessionManager.sessionActive.observe(this) { active ->
             if (binding.switchSession.isChecked != active) {

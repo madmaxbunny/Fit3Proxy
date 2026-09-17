@@ -3,7 +3,7 @@
 ## 규칙
 
 - **앱 versionName:** `MAJOR.MINOR.PATCH[-suffix]` (예: `0.2.1-phase2-fix`)
-- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `8`)
+- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `9`)
 - **Git 태그:** `vMAJOR.MINOR.PATCH` (예: `v0.2.1`) — 소스의 `versionName`과 맞출 것
 - **배포물:** GitHub Release에 debug/release APK 첨부. 최신 설치 링크는 `/releases/latest`
 
@@ -26,10 +26,10 @@ git push origin v0.2.1
 
 | 항목 | 값 |
 |---|---|
-| versionName | 0.3.3-volume-split |
-| versionCode | 8 |
-| 태그 | v0.3.3 |
-| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.3.3 |
+| versionName | 0.4.0-matrix |
+| versionCode | 9 |
+| 태그 | v0.4.0 |
+| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.4.0 |
 
 ## GitHub Actions 자동화
 

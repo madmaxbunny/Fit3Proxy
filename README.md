@@ -4,14 +4,14 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
 
-**현재 버전:** `0.3.3-volume-split` (versionCode 8) — Fit3 remVol 리맵 + 폰 볼륨 키는 로컬 STREAM_MUSIC.
+**현재 버전:** `0.4.0-matrix` (versionCode 9) — 2D 매트릭스(Next/Prev=슬롯, Fit3 볼륨=슬롯별 레벨) + remVol 경로·폰 볼륨 분리 유지.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.3.3-volume-split-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.3.3/Fit3Proxy-0.3.3-volume-split-debug.apk) (`v0.3.3` / versionName `0.3.3-volume-split` / versionCode `8`)
+- **현재 버전 다운로드:** [Fit3Proxy-0.4.0-matrix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.4.0/Fit3Proxy-0.4.0-matrix-debug.apk) (`v0.4.0` / versionName `0.4.0-matrix` / versionCode `9`)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -25,16 +25,18 @@
 | 핏3 음악 버튼 | 앱 동작 |
 |---|---|
 | Play / Pause | 현재 슬롯 ON/OFF 토글 |
-| Next / Previous | 슬롯 캐러셀 이동 (4개 데모) |
-| Fast Forward / Rewind | 밝기 ±10% (밝기 지원 슬롯만) |
-| Volume Up / Down (**Fit3**) | **원격 볼륨 리맵** → 앱 이벤트 (`volumeUp`/`volumeDown`) + `volumeStep`/`remVol` ±10 (0–100, 세션 ON일 때만) |
+| Next / Previous | **Axis A (행)** — 슬롯 이동 (4개 데모, wrap). 슬롯별 레벨은 유지 |
+| Fast Forward / Rewind | 밝기 ±10% (밝기 지원 슬롯만; 매트릭스 레벨과 독립) |
+| Volume Up / Down (**Fit3**) | **Axis B (열)** — 현재 슬롯의 레벨/`remVol` ±10 (0–100 clamp, 슬롯별 독립 기억) |
 | Volume Up / Down (**폰 HW**, 앱 포그라운드) | **로컬** `STREAM_MUSIC` + 시스템 볼륨 바 (`FLAG_SHOW_UI`). remVol 변경 없음 |
+
+**2D 매트릭스 (0.4.0+):** 셀 `(slotIndex, levelIndex)`가 활성 제어점. 각 행(슬롯)이 자체 열(레벨)을 기억합니다.
 
 메타데이터 전광판:
 
-- **Title** → `[조명 제어] 거실 전등`
-- **Artist** → `상태: ON | 밝기: 75% | remVol: 50` (원격 볼륨 스텝 포함)
-- **Album** → `Menu [1/4] Next로 이동`
+- **Title** → `[조명 제어] 거실 전등` (현재 행/슬롯)
+- **Artist** → `상태: ON | 밝기: 75% | 레벨: 50% | Menu [1/4 × L50]`
+- **Album** → `Matrix [1/4 × 50%]`
 
 ### Phase 2 — Notification Actions & Alert
 
@@ -50,12 +52,12 @@
 
 ```
 com.madmaxbunny.fit3proxy
-├── model/         ControlSlot, SlotRepository (인메모리)
-├── session/       Fit3MediaSessionManager (MediaSession + soft AudioFocus)
+├── model/         ControlSlot, SlotRepository, ControlMatrix (2D 인메모리)
+├── session/       Fit3MediaSessionManager (MediaSession + soft AudioFocus + remVol)
 ├── service/       Fit3ProxyForegroundService (mediaPlayback FGS, silent status)
 ├── notification/  AlertNotifier, NotificationActionReceiver
 ├── log/           EventLogStore (UI 이벤트 버스)
-└── ui/            MainActivity (Material 대시보드)
+└── ui/            MainActivity (Material 대시보드 + 매트릭스 위치)
 ```
 
 ## 요구 사항
@@ -100,6 +102,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    (`STREAM_MUSIC`). remVol·`volumeUp` 로그는 변하지 않고, 대신
    `phone VOLUME key → STREAM_MUSIC` 로그가 찍혀야 합니다.
    세션 OFF 후 폰 미디어 볼륨(다른 앱)이 정상인지 확인하세요.
+   **0.4.0+:** Next/Prev와 Fit3 볼륨이 **독립 축**인지 확인합니다.
+   - Next → 로그 `axis A (slot) next`, Album `Matrix [N/4 × L%]`, 대시보드 행 변경
+   - Fit3 볼륨 ↑ → 로그 `axis B (level) volumeUp`, 같은 행의 remVol/레벨만 ±10
+   - 다른 슬롯으로 이동 후 볼륨 조절 → 이전 슬롯 레벨은 그대로(슬롯별 기억)
+   - 다시 이전 슬롯으로 Next/Prev → remVol이 그 슬롯의 기억된 레벨로 복귀
 5. 스위치를 OFF 하면 세션·AudioFocus·FGS가 해제됩니다 (soft AudioFocus).
 
 ### B. Phase 2 — Notification Actions & 긴급 진동
@@ -174,6 +181,26 @@ Fit3(또는 Wearable)가 원격 프로바이더로 볼륨을 보내면:
 > Wearable 설정에 따라 다릅니다. 세션 ON에서 Fit3 볼륨을 조작해도 로그에
 > `volumeUp`/`volumeDown`이 없으면 밴드가 해당 키를 세션으로 전달하지 않는 것입니다.
 
+## 2D 매트릭스 제어 (0.4.0+)
+
+Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
+
+| 축 | Fit3 입력 | 상태 | 동작 |
+|---|---|---|---|
+| **A (행)** | Next / Previous | `slotIndex` | 슬롯(메뉴) 이동, wrap. 열(레벨)은 바꾸지 않음 |
+| **B (열)** | Volume ↑ / ↓ | `levelBySlot[slotIndex]` | 현재 슬롯 레벨 ±10 (0–100 clamp). 행은 바꾸지 않음 |
+
+- 그리드: **4 슬롯 × 11 레벨** (0…100, step 10)
+- 셀 `(slotIndex, levelIndex)` = 활성 제어점
+- Play/Pause = 현재 슬롯 ON/OFF (기존과 동일)
+- VolumeProvider ABSOLUTE → remVol 경로는 유지하되, remVol은 **현재 셀의 레벨**
+- 슬롯 전환 시 VolumeProvider `setCurrentVolume`을 그 행의 기억된 레벨로 동기화
+- 폰 HW 볼륨 키 분리(0.3.3)는 그대로
+
+대시보드: **행 N/4 × 열 L%** 읽기 + 슬롯별 레벨 텍스트 그리드(`>` = 현재 행).
+
+이벤트 로그: `axis A (slot) next/prev` vs `axis B (level) volumeUp/volumeDown`.
+
 ## Soft AudioFocus
 
 세션 스위치가 켜져 있을 때만 `AUDIOFOCUS_GAIN`을 요청하고, 끄면 즉시 `abandon` 합니다. 실제 오디오는 재생하지 않습니다.
@@ -195,7 +222,7 @@ Fit3(또는 Wearable)가 원격 프로바이더로 볼륨을 보내면:
 
 **applicationId:** `com.madmaxbunny.fit3proxy`
 
-**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded. **0.3.1+ / 0.3.3+:** with session ON, press **Fit3** volume ↑/↓ — the right-side system remote-volume bar may appear (expected). Success = `volumeUp`/`volumeDown` in the event log and `remVol` moving ±10; bar-only with stuck remVol means Fit3 did not forward adjust. With the app in the **foreground**, **phone** volume keys adjust local `STREAM_MUSIC` (system volume UI) and must **not** change remVol. Background phone keys may still hit remote remVol (documented limitation). Session OFF restores phone media volume via `setPlaybackToLocal`.
+**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded. **0.3.1+ / 0.3.3+:** with session ON, press **Fit3** volume ↑/↓ — the right-side system remote-volume bar may appear (expected). Success = `volumeUp`/`volumeDown` in the event log and `remVol` moving ±10; bar-only with stuck remVol means Fit3 did not forward adjust. With the app in the **foreground**, **phone** volume keys adjust local `STREAM_MUSIC` (system volume UI) and must **not** change remVol. Background phone keys may still hit remote remVol (documented limitation). Session OFF restores phone media volume via `setPlaybackToLocal`. **0.4.0+:** Next/Prev vs Fit3 volume are independent axes — changing volume must not change slot, and Next must not change that slot’s remembered level; switching back restores remVol for that row.
 
 **Fit3 verify (Phase 2):** In Galaxy Wearable, allow **Fit3 Proxy** notifications. Expand the ongoing status notification — tap `[재부팅]` / `[승인]` / `[스누즈]` and confirm the in-app event log. Tap **긴급 알림 테스트** on the phone dashboard — Fit3 should **vibrate/haptic** (not phone-shade-only); use alert actions / RemoteInput reply and confirm logs (`Fit3NotifAction`). Routine status updates must **not** keep buzzing the band.
 
@@ -210,3 +237,5 @@ Fit3(또는 Wearable)가 원격 프로바이더로 볼륨을 보내면:
 **0.3.2-ui:** Dashboard shows install version (`versionName` / `versionCode`).
 
 **0.3.3-volume-split:** Keep remote `VolumeProviderCompat` for Fit3 remVol; `MainActivity` intercepts phone HW volume keys (foreground) → local `STREAM_MUSIC` + `FLAG_SHOW_UI`, consume so remVol is unchanged. Document background limitation.
+
+**0.4.0-matrix:** 2D control matrix — Next/Prev = Axis A (slotIndex), Fit3 volume = Axis B (per-slot level 0–100 step 10). Metadata Album `Matrix [row/4 × L%]`; dashboard row×col + grid; event log tags `axis A` / `axis B`. remVol path + phone volume-key split unchanged.

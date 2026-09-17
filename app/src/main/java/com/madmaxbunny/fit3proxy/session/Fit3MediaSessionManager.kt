@@ -15,31 +15,30 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.media.VolumeProviderCompat
+import com.madmaxbunny.fit3proxy.model.ControlMatrix
 import com.madmaxbunny.fit3proxy.model.ControlSlot
 import com.madmaxbunny.fit3proxy.model.SlotRepository
 
 /**
- * Phase 1 MediaSession prototype + remote volume remap (0.3.1).
+ * MediaSession + remote volume remap + 2D control matrix (0.4.0).
  *
  * Soft AudioFocus: request/abandon only while the dashboard switch keeps the
  * session active — avoids fighting Spotify/YouTube when idle (SOW §6.2).
  *
- * While session is ON, playback volume is routed to [VolumeProviderCompat]
- * (ABSOLUTE) so Fit3 / Wearable volume that hits the remote provider becomes
- * app events (volumeStep ±10 / remVol) instead of only changing STREAM_MUSIC.
- * Phone hardware volume keys are intercepted in [com.madmaxbunny.fit3proxy.ui.MainActivity]
- * (foreground) and adjust local STREAM_MUSIC with FLAG_SHOW_UI — they must not
- * change remVol. On stop, [setPlaybackToLocal] restores normal phone media volume.
+ * **2D matrix (0.4.0):**
+ * - Axis A (rows): Next / Previous → [SlotRepository.next]/[previous] (slotIndex wrap)
+ * - Axis B (cols): Fit3 volume ↑/↓ → per-slot [ControlMatrix] level (0…100 step 10, clamp)
+ * - Each slot remembers its own level; switching rows restores that row's column
+ * - Play/Pause still toggles current slot ON/OFF
  *
- * 0.3.0 used RELATIVE; on Samsung/Fit3 the system remote-volume bar often
- * appeared without delivering [VolumeProviderCompat.onAdjustVolume], so remVol
- * stayed stuck. 0.3.1 uses ABSOLUTE, always calls [setCurrentVolume] after each
- * change (synchronously in the provider callback), and hops metadata/UI onto
- * the main looper.
+ * While session is ON, playback volume is routed to [VolumeProviderCompat]
+ * (ABSOLUTE) so Fit3 / Wearable volume becomes Axis B (remVol / level).
+ * Phone hardware volume keys are intercepted in [com.madmaxbunny.fit3proxy.ui.MainActivity]
+ * (foreground) and adjust local STREAM_MUSIC — they must not change remVol.
+ * On stop, [setPlaybackToLocal] restores normal phone media volume.
  *
  * Media callbacks stay lightweight: update PlaybackState/Metadata immediately,
- * defer UI/event-log work. Do NOT rebuild FGS notifications here — that floods
- * Galaxy Wearable and freezes the Fit3 music UI.
+ * defer UI/event-log work. Do NOT rebuild FGS notifications here.
  */
 class Fit3MediaSessionManager(
     private val context: Context,
@@ -52,6 +51,7 @@ class Fit3MediaSessionManager(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val matrix: ControlMatrix get() = slotRepository.matrix
 
     private var mediaSession: MediaSessionCompat? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -60,9 +60,7 @@ class Fit3MediaSessionManager(
     private var isPlayingVisual: Boolean = false
     private var active: Boolean = false
 
-    /** Demo counter shown on Fit3 metadata / phone dashboard (0–100). */
-    @Volatile
-    private var volumeStep: Int = 50
+    /** Last Axis-B / remVol event string for dashboard. */
     @Volatile
     private var lastVolumeEvent: String = "—"
 
@@ -91,12 +89,13 @@ class Fit3MediaSessionManager(
         val album: String,
         val playing: Boolean,
         val volumeStep: Int = 50,
-        val lastVolumeEvent: String = "—"
+        val lastVolumeEvent: String = "—",
+        val matrixPosition: String = "—",
+        val matrixGrid: String = ""
     )
 
     private val callback = object : MediaSessionCompat.Callback() {
         override fun onPlay() {
-            // Ack Fit3 immediately with state, then cheap slot work
             isPlayingVisual = true
             handleToggle()
             publishPlaybackState()
@@ -113,17 +112,30 @@ class Fit3MediaSessionManager(
         }
 
         override fun onSkipToNext() {
+            val before = matrix.currentSlotIndex
             slotRepository.next()
+            val after = matrix.currentSlotIndex
+            // Axis A move → sync VolumeProvider to this row's remembered level
+            syncRemoteVolumeToCurrentLevel()
             publishMetadata()
             publishPlaybackState()
-            logEventDeferred("onSkipToNext() → carousel next")
+            logEventDeferred(
+                "axis A (slot) next → row ${after + 1}/${matrix.rowCount} " +
+                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | ${matrix.albumLabel()}"
+            )
         }
 
         override fun onSkipToPrevious() {
+            val before = matrix.currentSlotIndex
             slotRepository.previous()
+            val after = matrix.currentSlotIndex
+            syncRemoteVolumeToCurrentLevel()
             publishMetadata()
             publishPlaybackState()
-            logEventDeferred("onSkipToPrevious() → carousel previous")
+            logEventDeferred(
+                "axis A (slot) prev → row ${after + 1}/${matrix.rowCount} " +
+                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | ${matrix.albumLabel()}"
+            )
         }
 
         override fun onFastForward() {
@@ -184,9 +196,13 @@ class Fit3MediaSessionManager(
         publishPlaybackState()
         logEvent("MediaSession active — Fit3 music widget should show metadata")
         logEvent(
+            "2D matrix ON — Axis A: Next/Prev → slot | Axis B: Fit3 volume → per-slot level " +
+                "(${matrix.rowCount}×${matrix.colCount}, step=${ControlMatrix.LEVEL_STEP_PERCENT}). " +
+                "Phone HW volume keys (app foreground) → STREAM_MUSIC local; remVol unchanged."
+        )
+        logEvent(
             "Remote volume ON (ABSOLUTE) — Fit3/Wearable volume → VolumeProvider " +
-                "(step=$volumeStep, delta=±$VOLUME_DELTA). " +
-                "Phone HW volume keys (app foreground) → STREAM_MUSIC local; remVol unchanged. " +
+                "(cell=${matrix.albumLabel()}, remVol=${matrix.currentLevelPercent()}). " +
                 "System remote-volume bar may appear for Fit3; remVol + event log are the real feedback."
         )
     }
@@ -197,7 +213,6 @@ class Fit3MediaSessionManager(
 
         abandonSoftAudioFocus()
         mediaSession?.apply {
-            // Restore normal local media volume before tearing down the session.
             try {
                 setPlaybackToLocal(AudioManager.STREAM_MUSIC)
                 logEvent("setPlaybackToLocal(STREAM_MUSIC) — phone media volume restored")
@@ -219,7 +234,16 @@ class Fit3MediaSessionManager(
         active = false
         _sessionActive.postValue(false)
         _metadataPreview.postValue(
-            MetadataPreview("—", "—", "—", false, volumeStep, lastVolumeEvent)
+            MetadataPreview(
+                title = "—",
+                artist = "—",
+                album = "—",
+                playing = false,
+                volumeStep = matrix.currentLevelPercent(),
+                lastVolumeEvent = lastVolumeEvent,
+                matrixPosition = matrix.positionReadout(),
+                matrixGrid = matrix.gridText()
+            )
         )
         logEvent("MediaSession released — remote volume abandoned")
     }
@@ -235,7 +259,6 @@ class Fit3MediaSessionManager(
     fun pulseForAlert() {
         if (!active || mediaSession == null) return
         val session = mediaSession ?: return
-        // Tiny position bump + re-assert PLAYING/PAUSED so controllers refresh
         val state = if (isPlayingVisual) {
             PlaybackStateCompat.STATE_PLAYING
         } else {
@@ -252,29 +275,26 @@ class Fit3MediaSessionManager(
     }
 
     private fun attachRemoteVolume(session: MediaSessionCompat) {
-        // ABSOLUTE: Samsung/Fit3 often shows the remote volume panel for RELATIVE
-        // without invoking onAdjustVolume. ABSOLUTE still receives onAdjustVolume
-        // for key presses and onSetVolumeTo for absolute UI / OEM paths.
+        val initial = matrix.currentLevelPercent()
         val provider = object : VolumeProviderCompat(
             VOLUME_CONTROL_ABSOLUTE,
             VOLUME_MAX,
-            volumeStep
+            initial
         ) {
             override fun onAdjustVolume(direction: Int) {
-                // May run on a binder thread. Update provider volume synchronously
-                // so the system remote-volume UI stays in sync, then hop UI work.
                 Log.i(
                     TAG,
                     "onAdjustVolume(direction=$direction) thread=${Thread.currentThread().name}"
                 )
                 val delta = directionToDelta(direction)
-                val before = volumeStep
-                val after = if (delta == 0) {
-                    before
-                } else {
-                    (before + delta).coerceIn(0, VOLUME_MAX)
+                val (before, after, changed) = when {
+                    delta > 0 -> matrix.levelUp()
+                    delta < 0 -> matrix.levelDown()
+                    else -> {
+                        val cur = matrix.currentLevelPercent()
+                        Triple(cur, cur, false)
+                    }
                 }
-                volumeStep = after
                 // Critical: always re-assert so session/UI do not treat adjust as no-op.
                 setCurrentVolume(after)
 
@@ -283,23 +303,24 @@ class Fit3MediaSessionManager(
                     delta < 0 -> "volumeDown"
                     else -> "volumeSame"
                 }
-                lastVolumeEvent = if (delta == 0) {
-                    "$label (no-op, step=$after)"
+                lastVolumeEvent = if (!changed) {
+                    "$label (no-op, remVol=$after) | ${matrix.albumLabel()}"
                 } else {
-                    "$label → step=$after (was $before)"
+                    "$label → remVol=$after (was $before) | ${matrix.albumLabel()}"
                 }
 
                 mainHandler.post {
                     publishMetadata()
                     publishPlaybackState(nudgePosition = true)
-                    if (delta == 0) {
+                    if (!changed) {
                         logEvent(
-                            "onAdjustVolume(dir=$direction) → no-op | volumeStep=$after"
+                            "axis B (level) $label no-op | remVol=$after | ${matrix.albumLabel()} " +
+                                "(dir=$direction, ABSOLUTE)"
                         )
                     } else {
                         logEvent(
-                            "$label → custom action | volumeStep=$after " +
-                                "(dir=$direction, delta=$delta, setCurrentVolume, ABSOLUTE)"
+                            "axis B (level) $label → remVol=$after (was $before) | " +
+                                "${matrix.albumLabel()} (dir=$direction, delta=$delta, setCurrentVolume, ABSOLUTE)"
                         )
                     }
                 }
@@ -310,9 +331,7 @@ class Fit3MediaSessionManager(
                     TAG,
                     "onSetVolumeTo(volume=$volume) thread=${Thread.currentThread().name}"
                 )
-                val before = volumeStep
-                val after = volume.coerceIn(0, VOLUME_MAX)
-                volumeStep = after
+                val (before, after, changed) = matrix.setLevelPercent(volume)
                 setCurrentVolume(after)
 
                 val label = when {
@@ -320,26 +339,36 @@ class Fit3MediaSessionManager(
                     after < before -> "volumeDown"
                     else -> "volumeSet"
                 }
-                lastVolumeEvent = "$label → step=$after (setTo, was $before)"
+                lastVolumeEvent = "$label → remVol=$after (setTo, was $before) | ${matrix.albumLabel()}"
 
                 mainHandler.post {
                     publishMetadata()
                     publishPlaybackState(nudgePosition = true)
                     logEvent(
-                        "$label → custom action | volumeStep=$after " +
-                            "(onSetVolumeTo($volume), setCurrentVolume, ABSOLUTE)"
+                        "axis B (level) $label → remVol=$after (was $before) | " +
+                            "${matrix.albumLabel()} (onSetVolumeTo($volume), setCurrentVolume, ABSOLUTE" +
+                            if (changed) ")" else ", no-op)"
                     )
                 }
             }
         }
         volumeProvider = provider
         session.setPlaybackToRemote(provider)
-        // Re-assert so session/UI start in sync with our demo counter.
-        provider.setCurrentVolume(volumeStep)
+        provider.setCurrentVolume(initial)
         logEvent(
             "setPlaybackToRemote(VolumeProviderCompat ABSOLUTE, max=$VOLUME_MAX, " +
-                "current=$volumeStep) — expect volumeUp/volumeDown in log on key press"
+                "current=$initial) — Axis B level; expect volumeUp/volumeDown in log on Fit3 key"
         )
+    }
+
+    /** After Axis A (slot) change, push this row's remembered remVol into the provider. */
+    private fun syncRemoteVolumeToCurrentLevel() {
+        val level = matrix.currentLevelPercent()
+        try {
+            volumeProvider?.setCurrentVolume(level)
+        } catch (t: Throwable) {
+            Log.w(TAG, "syncRemoteVolumeToCurrentLevel failed", t)
+        }
     }
 
     /** Map ADJUST_* / OEM ±1-style directions to ±[VOLUME_DELTA] (0 = no-op). */
@@ -351,40 +380,38 @@ class Fit3MediaSessionManager(
 
     private fun handleToggle() {
         val slot = slotRepository.toggleCurrent()
-        // Deferred so MediaSession ack is not blocked by string work / listeners
         logEventDeferred("toggle → ${slot.title} = ${if (slot.isOn) "ON" else "OFF"}")
     }
 
     private fun publishMetadata() {
-        val slot = slotRepository.current()
-        val album = slot.albumLabel(slotRepository.currentIndexZeroBased, slotRepository.size)
-        // Artist carries slot status + remapped volumeStep so Fit3 can show feedback.
-        val artistWithVol = "${slot.artist} | remVol: $volumeStep"
+        val title = matrix.titleLabel()
+        val artist = matrix.artistLabel()
+        val album = matrix.albumLabel()
+        val remVol = matrix.currentLevelPercent()
         val metadata = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, slot.title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artistWithVol)
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, FAKE_DURATION_MS)
             .build()
         mediaSession?.setMetadata(metadata)
-        // postValue is async — OK for phone UI; must not trigger Wearable notification flood
         _metadataPreview.postValue(
             MetadataPreview(
-                title = slot.title,
-                artist = artistWithVol,
+                title = title,
+                artist = artist,
                 album = album,
                 playing = isPlayingVisual,
-                volumeStep = volumeStep,
-                lastVolumeEvent = lastVolumeEvent
+                volumeStep = remVol,
+                lastVolumeEvent = lastVolumeEvent,
+                matrixPosition = matrix.positionReadout(),
+                matrixGrid = matrix.gridText()
             )
         )
-        Log.d(TAG, "metadata title=${slot.title} artist=$artistWithVol remVol=$volumeStep")
+        Log.d(TAG, "metadata title=$title artist=$artist album=$album remVol=$remVol")
     }
 
     /**
-     * Apply brightness delta on the current slot, push live Artist metadata +
-     * a PlaybackState nudge so Fit3 refreshes (metadata-only updates are often ignored),
-     * and log the resulting brightness.
+     * Apply brightness delta on the current slot (FF/REW — independent of matrix level).
      */
     private fun handleBrightnessDelta(delta: Int, source: String) {
         val before = slotRepository.current()
@@ -396,7 +423,6 @@ class Fit3MediaSessionManager(
             return
         }
         val slot = slotRepository.brightnessDelta(delta)
-        // Fit3/Wearable often caches Artist until PlaybackState changes — nudge position.
         publishMetadata()
         publishPlaybackState(nudgePosition = true)
         logEventDeferred(
@@ -425,10 +451,6 @@ class Fit3MediaSessionManager(
         Log.d(TAG, "playbackState=$state pos=$position")
     }
 
-    /**
-     * Soft focus: hold only while session switch is ON.
-     * Transient may still be interrupted by real players — by design.
-     */
     private fun requestSoftAudioFocus() {
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val attrs = AudioAttributes.Builder()
@@ -489,7 +511,7 @@ class Fit3MediaSessionManager(
         private const val FAKE_DURATION_MS = 60_000L
         private const val PLAYBACK_POSITION_MS = 1_000L
         private const val VOLUME_MAX = 100
-        /** Demo step size per volume key (clamp 0–100). */
+        /** Demo step size per volume key (matches ControlMatrix.LEVEL_STEP_PERCENT). */
         private const val VOLUME_DELTA = 10
     }
 }
