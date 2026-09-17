@@ -30,3 +30,8 @@ git push origin v0.2.1
 | versionCode | 3 |
 | 태그 | v0.2.1 |
 | 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.2.1 |
+
+## GitHub Actions 자동화
+
+태그 `v*` push 시 APK를 빌드해 Release에 첨부하는 워크플로는 `docs/examples/release.yml`에 초안이 있습니다.  
+현재 `gh` 토큰에 `workflow` 스코프가 없어 `.github/workflows/`로는 아직 올릴 수 없습니다. 스코프 부여 후 해당 파일을 `.github/workflows/release.yml`로 옮기면 됩니다.
