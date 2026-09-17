@@ -2,16 +2,17 @@
 
 갤럭시 핏3(Galaxy Fit3)의 기본 **음악 컨트롤러**와 **알림 액션**을 활용해, 손목에서 조명/전원 등 데모 슬롯을 제어하고 긴급 햅틱·빠른 액션을 검증하는 안드로이드 브릿지 앱입니다.
 
-본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
+본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯; MQTT 없음. **0.5.0+** 인앱 업데이트만 GitHub Releases API에 HTTPS 접속)
 
-**현재 버전:** `0.4.1-matrix` (versionCode 10) — 슬롯별 Play/Pause 토글 기억 + Next/Prev 시 Fit3 재생 상태 동기화 + 2D 매트릭스/remVol 분리 유지.
+**현재 버전:** `0.5.0-updater` (versionCode 11) — GitHub Releases **인앱 업데이트**(자동 확인→다운로드→설치 UI 한 번 탭) + 기존 매트릭스/슬롯 토글/볼륨 분리 유지.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.4.1-matrix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.4.1/Fit3Proxy-0.4.1-matrix-debug.apk) (`v0.4.1` / versionName `0.4.1-matrix` / versionCode `10`)
+- **현재 버전 다운로드:** [Fit3Proxy-0.5.0-updater-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.5.0/Fit3Proxy-0.5.0-updater-debug.apk) (`v0.5.0` / versionName `0.5.0-updater` / versionCode `11`)
+- **version.json:** [version.json](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.5.0/version.json) (인앱 업데이터가 `versionCode` 비교에 사용)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -50,6 +51,30 @@
 | RemoteInput | `[답장]` 빠른 답장 스텁 (네트워크 없음) |
 | UI 테스트 | 대시보드 **긴급 알림 테스트** 버튼 |
 
+
+### 인앱 업데이트 (0.5.0+) — GitHub Releases
+
+앱 시작 시(및 **업데이트 확인** 버튼) GitHub Releases API로 최신 릴리스를 확인합니다.
+
+| 단계 | 동작 |
+|---|---|
+| 1. 확인 | `https://api.github.com/repos/madmaxbunny/Fit3Proxy/releases/latest` |
+| 2. 비교 | 릴리스에 첨부된 `version.json`의 `versionCode` vs `BuildConfig.VERSION_CODE` |
+| 3. 다운로드 | 새 버전이면 APK를 앱 캐시에 자동 다운로드 (진행률 표시) |
+| 4. 설치 | **설치** 버튼 → PackageInstaller(우선) 또는 FileProvider + ACTION_VIEW |
+
+**현실 제약 (Android):** 일반(비시스템) 앱은 사용자 확인 없이 APK를 **무음 설치할 수 없습니다**.  
+PackageInstaller / 시스템 설치 UI에서 **한 번 탭(확인)** 이 필요합니다. “완전 자동 설치”는 디바이스 오너/시스템 권한 없이는 불가능합니다.
+
+릴리스 시 **APK와 `version.json`을 함께 첨부**해야 합니다. 예:
+
+```json
+{ "versionCode": 11, "versionName": "0.5.0-updater", "apk": "Fit3Proxy-0.5.0-updater-debug.apk" }
+```
+
+권한: `INTERNET`, `REQUEST_INSTALL_PACKAGES` + `FileProvider`.  
+실패 시(오프라인/404/동일 버전) 조용히 넘어가거나 토스트 한 번만 표시합니다.
+
 ## 패키지 구조
 
 ```
@@ -58,8 +83,9 @@ com.madmaxbunny.fit3proxy
 ├── session/       Fit3MediaSessionManager (MediaSession + soft AudioFocus + remVol)
 ├── service/       Fit3ProxyForegroundService (mediaPlayback FGS, silent status)
 ├── notification/  AlertNotifier, NotificationActionReceiver
+├── update/        GitHub Releases 인앱 업데이트 (check → download → install UI)
 ├── log/           EventLogStore (UI 이벤트 버스)
-└── ui/            MainActivity (Material 대시보드 + 매트릭스 위치)
+└── ui/            MainActivity (Material 대시보드 + 매트릭스 + 업데이트 카드)
 ```
 
 ## 요구 사항
@@ -248,3 +274,5 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 **0.4.0-matrix:** 2D control matrix — Next/Prev = Axis A (slotIndex), Fit3 volume = Axis B (per-slot level 0–100 step 10). Metadata Album `Matrix [row/4 × L%]`; dashboard row×col + grid; event log tags `axis A` / `axis B`. remVol path + phone volume-key split unchanged.
 
 **0.4.1-matrix:** Per-slot Play/Pause persistence — each row keeps `isOn`; toggle updates that slot + `STATE_PLAYING`/`STATE_PAUSED` immediately; Next/Prev restores PlaybackState from the newly selected slot’s saved `isOn` so Fit3 play/pause matches that row. Dashboard shows current-slot toggle ON/OFF. Volume/level still independent of toggle.
+
+**0.5.0-updater:** GitHub Releases 인앱 업데이트 — 런치 시 자동 확인, `version.json`로 versionCode 비교, APK 캐시 다운로드, PackageInstaller/FileProvider 설치 UI(사용자 확인 1회). 대시보드에 업데이트 카드·현재/최신 비교. 기존 매트릭스·슬롯 토글·볼륨 분리 유지.

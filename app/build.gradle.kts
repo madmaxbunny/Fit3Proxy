@@ -11,8 +11,8 @@ android {
         applicationId = "com.madmaxbunny.fit3proxy"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.4.1-matrix"
+        versionCode = 11
+        versionName = "0.5.0-updater"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -51,6 +51,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // MediaSessionCompat (Phase 1 preferred)
     implementation("androidx.media:media:1.7.0")
