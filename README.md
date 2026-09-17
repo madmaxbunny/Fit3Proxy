@@ -6,6 +6,18 @@
 
 **현재 버전:** `0.2.1-phase2-fix` (versionCode 3) — Fit3 긴급 햅틱 + 미디어 버튼 프리즈 수정.
 
+## 폰에 설치하기 (APK)
+
+최신 설치 파일은 **GitHub Releases**에서 받습니다.
+
+- **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
+- **현재 버전 다운로드:** [Fit3Proxy-0.2.1-phase2-fix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.2.1/Fit3Proxy-0.2.1-phase2-fix-debug.apk) (`v0.2.1` / versionName `0.2.1-phase2-fix` / versionCode `3`)
+
+설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
+
+버전 규칙·릴리스 절차는 [docs/VERSIONING.md](docs/VERSIONING.md)를 참고하세요.
+
+
 ## 무엇을 하나요?
 
 ### Phase 1 — MediaSession
