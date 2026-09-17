@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fit3 Proxy</string>
+    <string name="dashboard_title">Fit3 Bridge — Phase 1</string>
+    <string name="session_switch_label">MediaSession 가동</string>
+    <string name="session_active">세션 활성</string>
+    <string name="session_inactive">세션 중지</string>
+    <string name="preview_title_label">Title (핏3 표시)</string>
+    <string name="preview_artist_label">Artist (상태)</string>
+    <string name="preview_album_label">Album (메뉴)</string>
+    <string name="event_log_label">이벤트 로그</string>
+    <string name="clear_log">로그 지우기</string>
+    <string name="notification_channel_name">Fit3 MediaSession</string>
+    <string name="notification_channel_desc">가상 미디어 세션 포그라운드 알림</string>
+    <string name="notification_title">Fit3 Proxy 세션 활성</string>
+    <string name="notification_text">핏3 음악 컨트롤러로 제어 가능</string>
+    <string name="hint_wearable">Galaxy Wearable에서 이 앱의 음악 제어 권한을 허용하세요.</string>
+</resources>
