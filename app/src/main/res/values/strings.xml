@@ -8,6 +8,8 @@
     <string name="preview_title_label">Title (핏3 표시)</string>
     <string name="preview_artist_label">Artist (상태)</string>
     <string name="preview_album_label">Album (메뉴)</string>
+    <string name="preview_toggle_label">현재 슬롯 토글 (Play/Pause)</string>
+    <string name="preview_toggle_placeholder">—</string>
     <string name="preview_volume_label">Fit3 remVol / 레벨 (밴드 ↑/↓ = Axis B · 폰 키 ≠ remVol)</string>
     <string name="preview_volume_placeholder">—</string>
     <string name="preview_matrix_label">2D 매트릭스 (행=슬롯 · 열=레벨)</string>

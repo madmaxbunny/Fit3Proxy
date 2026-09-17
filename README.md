@@ -4,14 +4,14 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
 
-**현재 버전:** `0.4.0-matrix` (versionCode 9) — 2D 매트릭스(Next/Prev=슬롯, Fit3 볼륨=슬롯별 레벨) + remVol 경로·폰 볼륨 분리 유지.
+**현재 버전:** `0.4.1-matrix` (versionCode 10) — 슬롯별 Play/Pause 토글 기억 + Next/Prev 시 Fit3 재생 상태 동기화 + 2D 매트릭스/remVol 분리 유지.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.4.0-matrix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.4.0/Fit3Proxy-0.4.0-matrix-debug.apk) (`v0.4.0` / versionName `0.4.0-matrix` / versionCode `9`)
+- **현재 버전 다운로드:** [Fit3Proxy-0.4.1-matrix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.4.1/Fit3Proxy-0.4.1-matrix-debug.apk) (`v0.4.1` / versionName `0.4.1-matrix` / versionCode `10`)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -24,13 +24,15 @@
 
 | 핏3 음악 버튼 | 앱 동작 |
 |---|---|
-| Play / Pause | 현재 슬롯 ON/OFF 토글 |
-| Next / Previous | **Axis A (행)** — 슬롯 이동 (4개 데모, wrap). 슬롯별 레벨은 유지 |
+| Play / Pause | 현재 슬롯 ON/OFF 토글 (**슬롯별 기억**; Fit3 PLAYING/PAUSED = 그 슬롯 `isOn`) |
+| Next / Previous | **Axis A (행)** — 슬롯 이동 (4개 데모, wrap). 슬롯별 레벨·**토글(ON/OFF)** 유지; Fit3 재생 아이콘은 새 슬롯 상태로 갱신 |
 | Fast Forward / Rewind | 밝기 ±10% (밝기 지원 슬롯만; 매트릭스 레벨과 독립) |
 | Volume Up / Down (**Fit3**) | **Axis B (열)** — 현재 슬롯의 레벨/`remVol` ±10 (0–100 clamp, 슬롯별 독립 기억) |
 | Volume Up / Down (**폰 HW**, 앱 포그라운드) | **로컬** `STREAM_MUSIC` + 시스템 볼륨 바 (`FLAG_SHOW_UI`). remVol 변경 없음 |
 
 **2D 매트릭스 (0.4.0+):** 셀 `(slotIndex, levelIndex)`가 활성 제어점. 각 행(슬롯)이 자체 열(레벨)을 기억합니다.
+
+**슬롯별 토글 (0.4.1+):** 각 행이 `isOn`을 독립 기억합니다. Play/Pause는 현재 행만 토글하고 `PlaybackState`를 즉시 `STATE_PLAYING`/`STATE_PAUSED`로 맞춥니다. Next/Prev는 다른 행의 토글을 리셋하지 않으며, 새로 선택된 행의 저장 `isOn`으로 Fit3 재생 아이콘을 동기화합니다.
 
 메타데이터 전광판:
 
@@ -107,6 +109,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    - Fit3 볼륨 ↑ → 로그 `axis B (level) volumeUp`, 같은 행의 remVol/레벨만 ±10
    - 다른 슬롯으로 이동 후 볼륨 조절 → 이전 슬롯 레벨은 그대로(슬롯별 기억)
    - 다시 이전 슬롯으로 Next/Prev → remVol이 그 슬롯의 기억된 레벨로 복귀
+   **0.4.1+:** 슬롯별 Play/Pause 토글이 기억되는지 확인합니다.
+   - 슬롯 A에서 Pause(OFF) → Next로 슬롯 B → Play(ON) → Prev로 A 복귀 → Fit3가 **일시정지(PAUSED)** 이고 대시보드 토글 **OFF**
+   - 다시 Next로 B → Fit3가 **재생(PLAYING)** / 대시보드 **ON** (B의 저장값)
+   - 볼륨 ↑/↓는 토글을 지우지 않음; 매트릭스 그리드에 각 행 `[ON]`/`[OFF]` 표시
 5. 스위치를 OFF 하면 세션·AudioFocus·FGS가 해제됩니다 (soft AudioFocus).
 
 ### B. Phase 2 — Notification Actions & 긴급 진동
@@ -187,17 +193,18 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 
 | 축 | Fit3 입력 | 상태 | 동작 |
 |---|---|---|---|
-| **A (행)** | Next / Previous | `slotIndex` | 슬롯(메뉴) 이동, wrap. 열(레벨)은 바꾸지 않음 |
-| **B (열)** | Volume ↑ / ↓ | `levelBySlot[slotIndex]` | 현재 슬롯 레벨 ±10 (0–100 clamp). 행은 바꾸지 않음 |
+| **A (행)** | Next / Previous | `slotIndex` | 슬롯(메뉴) 이동, wrap. 열(레벨)·토글은 바꾸지 않음; Fit3 PLAYING/PAUSED는 새 행 `isOn` |
+| **B (열)** | Volume ↑ / ↓ | `levelBySlot[slotIndex]` | 현재 슬롯 레벨 ±10 (0–100 clamp). 행·토글은 바꾸지 않음 |
 
 - 그리드: **4 슬롯 × 11 레벨** (0…100, step 10)
 - 셀 `(slotIndex, levelIndex)` = 활성 제어점
-- Play/Pause = 현재 슬롯 ON/OFF (기존과 동일)
+- Play/Pause = 현재 슬롯 ON/OFF (**슬롯별 `isOn` 기억**, 0.4.1+)
+- Next/Prev 후 `PlaybackState`를 새 슬롯의 저장 `isOn`으로 동기화 (Fit3 재생 아이콘 일치)
 - VolumeProvider ABSOLUTE → remVol 경로는 유지하되, remVol은 **현재 셀의 레벨**
 - 슬롯 전환 시 VolumeProvider `setCurrentVolume`을 그 행의 기억된 레벨로 동기화
 - 폰 HW 볼륨 키 분리(0.3.3)는 그대로
 
-대시보드: **행 N/4 × 열 L%** 읽기 + 슬롯별 레벨 텍스트 그리드(`>` = 현재 행).
+대시보드: **현재 슬롯 토글 ON/OFF** + **행 N/4 × 열 L%** + 슬롯별 `[ON]`/`[OFF]`·레벨 그리드(`>` = 현재 행).
 
 이벤트 로그: `axis A (slot) next/prev` vs `axis B (level) volumeUp/volumeDown`.
 
@@ -222,7 +229,7 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 
 **applicationId:** `com.madmaxbunny.fit3proxy`
 
-**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded. **0.3.1+ / 0.3.3+:** with session ON, press **Fit3** volume ↑/↓ — the right-side system remote-volume bar may appear (expected). Success = `volumeUp`/`volumeDown` in the event log and `remVol` moving ±10; bar-only with stuck remVol means Fit3 did not forward adjust. With the app in the **foreground**, **phone** volume keys adjust local `STREAM_MUSIC` (system volume UI) and must **not** change remVol. Background phone keys may still hit remote remVol (documented limitation). Session OFF restores phone media volume via `setPlaybackToLocal`. **0.4.0+:** Next/Prev vs Fit3 volume are independent axes — changing volume must not change slot, and Next must not change that slot’s remembered level; switching back restores remVol for that row.
+**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded. **0.3.1+ / 0.3.3+:** with session ON, press **Fit3** volume ↑/↓ — the right-side system remote-volume bar may appear (expected). Success = `volumeUp`/`volumeDown` in the event log and `remVol` moving ±10; bar-only with stuck remVol means Fit3 did not forward adjust. With the app in the **foreground**, **phone** volume keys adjust local `STREAM_MUSIC` (system volume UI) and must **not** change remVol. Background phone keys may still hit remote remVol (documented limitation). Session OFF restores phone media volume via `setPlaybackToLocal`. **0.4.0+:** Next/Prev vs Fit3 volume are independent axes — changing volume must not change slot, and Next must not change that slot’s remembered level; switching back restores remVol for that row. **0.4.1+:** Pause slot A, Next to B, Play B, Prev to A → Fit3 shows PAUSED/OFF for A; Next to B → PLAYING/ON. Volume must not clear toggles.
 
 **Fit3 verify (Phase 2):** In Galaxy Wearable, allow **Fit3 Proxy** notifications. Expand the ongoing status notification — tap `[재부팅]` / `[승인]` / `[스누즈]` and confirm the in-app event log. Tap **긴급 알림 테스트** on the phone dashboard — Fit3 should **vibrate/haptic** (not phone-shade-only); use alert actions / RemoteInput reply and confirm logs (`Fit3NotifAction`). Routine status updates must **not** keep buzzing the band.
 
@@ -239,3 +246,5 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 **0.3.3-volume-split:** Keep remote `VolumeProviderCompat` for Fit3 remVol; `MainActivity` intercepts phone HW volume keys (foreground) → local `STREAM_MUSIC` + `FLAG_SHOW_UI`, consume so remVol is unchanged. Document background limitation.
 
 **0.4.0-matrix:** 2D control matrix — Next/Prev = Axis A (slotIndex), Fit3 volume = Axis B (per-slot level 0–100 step 10). Metadata Album `Matrix [row/4 × L%]`; dashboard row×col + grid; event log tags `axis A` / `axis B`. remVol path + phone volume-key split unchanged.
+
+**0.4.1-matrix:** Per-slot Play/Pause persistence — each row keeps `isOn`; toggle updates that slot + `STATE_PLAYING`/`STATE_PAUSED` immediately; Next/Prev restores PlaybackState from the newly selected slot’s saved `isOn` so Fit3 play/pause matches that row. Dashboard shows current-slot toggle ON/OFF. Volume/level still independent of toggle.

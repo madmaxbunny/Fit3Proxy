@@ -11,8 +11,8 @@ android {
         applicationId = "com.madmaxbunny.fit3proxy"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.4.0-matrix"
+        versionCode = 10
+        versionName = "0.4.1-matrix"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -1,9 +1,10 @@
 package com.madmaxbunny.fit3proxy.model
 
 /**
- * Hardcoded Phase 1 demo slots + 2D [ControlMatrix] (0.4.0).
- * Axis A: Next/Prev → slotIndex. Axis B: Volume ↑/↓ → per-slot level.
- * No persistence / network.
+ * Hardcoded Phase 1 demo slots + 2D [ControlMatrix] (0.4.0+).
+ * Axis A: Next/Prev → slotIndex (per-slot level + isOn remembered).
+ * Axis B: Volume ↑/↓ → per-slot level. Play/Pause → per-slot isOn (0.4.1).
+ * No disk persistence / network (in-memory only).
  */
 class SlotRepository {
 

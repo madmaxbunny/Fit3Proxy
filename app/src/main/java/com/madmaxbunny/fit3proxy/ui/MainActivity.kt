@@ -171,6 +171,7 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
             binding.tvPreviewTitle.text = preview.title
             binding.tvPreviewArtist.text = preview.artist
             binding.tvPreviewAlbum.text = preview.album
+            binding.tvSlotToggle.text = preview.slotToggle
             binding.tvLastVolumeEvent.text =
                 "remVol=${preview.volumeStep} | ${preview.lastVolumeEvent}"
             binding.tvMatrixPosition.text = preview.matrixPosition

@@ -29,7 +29,8 @@ import com.madmaxbunny.fit3proxy.model.SlotRepository
  * - Axis A (rows): Next / Previous → [SlotRepository.next]/[previous] (slotIndex wrap)
  * - Axis B (cols): Fit3 volume ↑/↓ → per-slot [ControlMatrix] level (0…100 step 10, clamp)
  * - Each slot remembers its own level; switching rows restores that row's column
- * - Play/Pause still toggles current slot ON/OFF
+ * - Play/Pause toggles **current slot** `isOn` (per-row); PlaybackState follows that slot
+ * - Next/Prev restores PlaybackState from the **newly selected** slot's saved `isOn`
  *
  * While session is ON, playback volume is routed to [VolumeProviderCompat]
  * (ABSOLUTE) so Fit3 / Wearable volume becomes Axis B (remVol / level).
@@ -88,6 +89,8 @@ class Fit3MediaSessionManager(
         val artist: String,
         val album: String,
         val playing: Boolean,
+        /** Current slot toggle for dashboard: "ON" / "OFF". */
+        val slotToggle: String = "OFF",
         val volumeStep: Int = 50,
         val lastVolumeEvent: String = "—",
         val matrixPosition: String = "—",
@@ -96,32 +99,42 @@ class Fit3MediaSessionManager(
 
     private val callback = object : MediaSessionCompat.Callback() {
         override fun onPlay() {
-            isPlayingVisual = true
             handleToggle()
+            syncPlayingVisualFromCurrentSlot()
             publishPlaybackState()
             publishMetadata()
-            logEventDeferred("onPlay() → toggle slot")
+            logEventDeferred(
+                "onPlay() → toggle slot | isOn=${slotRepository.current().isOn} " +
+                    "| PlaybackState=${if (isPlayingVisual) "PLAYING" else "PAUSED"}"
+            )
         }
 
         override fun onPause() {
-            isPlayingVisual = false
             handleToggle()
+            syncPlayingVisualFromCurrentSlot()
             publishPlaybackState()
             publishMetadata()
-            logEventDeferred("onPause() → toggle slot")
+            logEventDeferred(
+                "onPause() → toggle slot | isOn=${slotRepository.current().isOn} " +
+                    "| PlaybackState=${if (isPlayingVisual) "PLAYING" else "PAUSED"}"
+            )
         }
 
         override fun onSkipToNext() {
             val before = matrix.currentSlotIndex
             slotRepository.next()
             val after = matrix.currentSlotIndex
-            // Axis A move → sync VolumeProvider to this row's remembered level
+            // Axis A move → sync VolumeProvider + PlaybackState from this row
             syncRemoteVolumeToCurrentLevel()
+            syncPlayingVisualFromCurrentSlot()
             publishMetadata()
-            publishPlaybackState()
+            // Nudge so Fit3 refresh play/pause icon for the new slot's saved isOn
+            publishPlaybackState(nudgePosition = true)
+            val slot = slotRepository.current()
             logEventDeferred(
                 "axis A (slot) next → row ${after + 1}/${matrix.rowCount} " +
-                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | ${matrix.albumLabel()}"
+                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | " +
+                    "toggle=${if (slot.isOn) "ON" else "OFF"} | ${matrix.albumLabel()}"
             )
         }
 
@@ -130,11 +143,14 @@ class Fit3MediaSessionManager(
             slotRepository.previous()
             val after = matrix.currentSlotIndex
             syncRemoteVolumeToCurrentLevel()
+            syncPlayingVisualFromCurrentSlot()
             publishMetadata()
-            publishPlaybackState()
+            publishPlaybackState(nudgePosition = true)
+            val slot = slotRepository.current()
             logEventDeferred(
                 "axis A (slot) prev → row ${after + 1}/${matrix.rowCount} " +
-                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | ${matrix.albumLabel()}"
+                    "(was ${before + 1}) | level L${matrix.currentLevelPercent()}% | " +
+                    "toggle=${if (slot.isOn) "ON" else "OFF"} | ${matrix.albumLabel()}"
             )
         }
 
@@ -168,6 +184,10 @@ class Fit3MediaSessionManager(
             AudioManager.AUDIOFOCUS_GAIN -> {
                 logEventDeferred("AudioFocus gained")
                 hasAudioFocus = true
+                // Restore play/pause icon from current slot's saved toggle
+                syncPlayingVisualFromCurrentSlot()
+                publishPlaybackState()
+                publishMetadata()
             }
         }
     }
@@ -188,7 +208,8 @@ class Fit3MediaSessionManager(
 
         attachRemoteVolume(session)
         requestSoftAudioFocus()
-        isPlayingVisual = true
+        // Drive Fit3 play/pause from current row's saved isOn (not a global session flag)
+        syncPlayingVisualFromCurrentSlot()
         active = true
         _sessionActive.postValue(true)
 
@@ -239,6 +260,7 @@ class Fit3MediaSessionManager(
                 artist = "—",
                 album = "—",
                 playing = false,
+                slotToggle = if (matrix.currentSlot().isOn) "ON" else "OFF",
                 volumeStep = matrix.currentLevelPercent(),
                 lastVolumeEvent = lastVolumeEvent,
                 matrixPosition = matrix.positionReadout(),
@@ -371,6 +393,14 @@ class Fit3MediaSessionManager(
         }
     }
 
+    /**
+     * Drive MediaSession play/pause visual from the **current slot's** saved [ControlSlot.isOn].
+     * Each matrix row keeps its own toggle; Next/Prev must call this so Fit3 shows the right icon.
+     */
+    private fun syncPlayingVisualFromCurrentSlot() {
+        isPlayingVisual = slotRepository.current().isOn
+    }
+
     /** Map ADJUST_* / OEM ±1-style directions to ±[VOLUME_DELTA] (0 = no-op). */
     private fun directionToDelta(direction: Int): Int = when {
         direction == AudioManager.ADJUST_RAISE || direction > 0 -> VOLUME_DELTA
@@ -395,12 +425,14 @@ class Fit3MediaSessionManager(
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, FAKE_DURATION_MS)
             .build()
         mediaSession?.setMetadata(metadata)
+        val slotOn = slotRepository.current().isOn
         _metadataPreview.postValue(
             MetadataPreview(
                 title = title,
                 artist = artist,
                 album = album,
                 playing = isPlayingVisual,
+                slotToggle = if (slotOn) "ON" else "OFF",
                 volumeStep = remVol,
                 lastVolumeEvent = lastVolumeEvent,
                 matrixPosition = matrix.positionReadout(),
@@ -423,6 +455,7 @@ class Fit3MediaSessionManager(
             return
         }
         val slot = slotRepository.brightnessDelta(delta)
+        syncPlayingVisualFromCurrentSlot()
         publishMetadata()
         publishPlaybackState(nudgePosition = true)
         logEventDeferred(
