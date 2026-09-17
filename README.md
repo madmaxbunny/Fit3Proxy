@@ -4,14 +4,14 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯만 사용, 네트워크/MQTT 없음)
 
-**현재 버전:** `0.2.2-phase2-fix` (versionCode 4) — 거실 전등 등 밝기 슬롯 FF/REW 즉시 반영 수정.
+**현재 버전:** `0.3.0-volume-remap` (versionCode 5) — Fit3 볼륨 ↑/↓를 MediaSession 원격 볼륨(VolumeProvider)으로 리맵.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.2.2-phase2-fix-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.2.2/Fit3Proxy-0.2.2-phase2-fix-debug.apk) (`v0.2.2` / versionName `0.2.2-phase2-fix` / versionCode `4`)
+- **현재 버전 다운로드:** [Fit3Proxy-0.3.0-volume-remap-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.3.0/Fit3Proxy-0.3.0-volume-remap-debug.apk) (`v0.3.0` / versionName `0.3.0-volume-remap` / versionCode `5`)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -27,11 +27,12 @@
 | Play / Pause | 현재 슬롯 ON/OFF 토글 |
 | Next / Previous | 슬롯 캐러셀 이동 (4개 데모) |
 | Fast Forward / Rewind | 밝기 ±10% (밝기 지원 슬롯만) |
+| Volume Up / Down | **원격 볼륨 리맵** → 앱 이벤트 (`volumeUp`/`volumeDown`) + `volumeStep` (세션 ON일 때만) |
 
 메타데이터 전광판:
 
 - **Title** → `[조명 제어] 거실 전등`
-- **Artist** → `상태: ON | 밝기: 75%`
+- **Artist** → `상태: ON | 밝기: 75% | remVol: 50` (원격 볼륨 스텝 포함)
 - **Album** → `Menu [1/4] Next로 이동`
 
 ### Phase 2 — Notification Actions & Alert
@@ -90,6 +91,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 4. Play·Next·Prev·FF·REW를 눌러 폰 앱의 **이벤트 로그**와 Logcat 태그 `Fit3MediaSession`에 콜백이 찍히는지 확인합니다.  
    **0.2.1+:** 버튼이 **즉시** 반응해야 합니다 (수 초 UI 프리즈 없어야 함). Fit3 음악 화면은 MediaSession 메타데이터만 갱신하고, FGS 상태 알림은 Wearable 재동기화 부하를 줄이기 위해 디바운스됩니다.
    **0.2.2+:** 거실 전등/침실 스탠드에서 FF(+10%) / REW(−10%) 시 Artist의 `밝기: N%`가 **즉시** 바뀌어야 합니다 (0–100 clamp). 이벤트 로그에 `brightness … → N%`가 찍히는지 확인하세요.
+   **0.3.0+:** 세션 ON 상태에서 Fit3 미디어 화면의 **볼륨 ↑/↓**를 눌러 보세요.
+   폰 이벤트 로그에 `volumeUp → custom action` / `volumeDown → custom action`과
+   `volumeStep=N`이 찍히고, Artist의 `remVol: N`·대시보드 Remote volume 미리보기가
+   갱신되면 성공입니다. (Fit3가 볼륨 키를 세션으로 보내지 않으면 로그가 안 남을 수 있음 — README 볼륨 리맵 절 참고.)
+   세션 OFF 후 폰 미디어 볼륨(다른 앱)이 정상인지 확인하세요.
 5. 스위치를 OFF 하면 세션·AudioFocus·FGS가 해제됩니다 (soft AudioFocus).
 
 ### B. Phase 2 — Notification Actions & 긴급 진동
@@ -112,6 +118,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 > 다른 음악 앱(Spotify 등)이 포커스를 가져가면 핏3 위젯이 그쪽으로 넘어갈 수 있습니다. 제어 모드일 때만 스위치를 켜세요.
 
+
+## Fit3 볼륨 ↑/↓ 리맵 (0.3.0+)
+
+세션이 **ON**일 때 `MediaSessionCompat.setPlaybackToRemote(VolumeProviderCompat)`로
+볼륨을 **RELATIVE** 원격 제어로 넘깁니다. Fit3(또는 Wearable 미디어 컨트롤러)가
+볼륨 키를 보내면 `onAdjustVolume(ADJUST_RAISE/LOWER)`가 호출되고:
+
+- 이벤트 로그 / Logcat (`Fit3MediaSession`): `volumeUp → custom action | volumeStep=N`
+- 인메모리 `volumeStep` (0–100) 갱신 → Artist 메타데이터 `remVol: N` + 대시보드 **Remote volume** 미리보기
+- **시스템 `STREAM_MUSIC`은 건드리지 않음** (원격 프로바이더가 가로챔)
+
+세션 **OFF** 시 `setPlaybackToLocal(STREAM_MUSIC)`으로 복구해, 폰 미디어 볼륨이
+영구적으로 깨지지 않게 합니다.
+
+> **중요:** Fit3가 실제로 볼륨 키/제스처를 미디어 세션으로 보내는지 기기·워치페이스·
+> Wearable 설정에 따라 다릅니다. 일부 기기/펌웨어에서는 볼륨이 폰 스트림으로만
+> 가거나 미디어 컨트롤러에 볼륨 UI가 없을 수 있습니다. 세션 ON 상태에서 볼륨을
+> 조작해도 로그에 `volumeUp`/`volumeDown`이 없으면 밴드가 해당 키를 세션으로
+> 전달하지 않는 것입니다 (앱 버그가 아닐 수 있음).
+
 ## Soft AudioFocus
 
 세션 스위치가 켜져 있을 때만 `AUDIOFOCUS_GAIN`을 요청하고, 끄면 즉시 `abandon` 합니다. 실제 오디오는 재생하지 않습니다.
@@ -133,10 +159,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 **applicationId:** `com.madmaxbunny.fit3proxy`
 
-**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded.
+**Fit3 verify (Phase 1):** Enable the session switch → allow notification + **music control** for this app in **Galaxy Wearable** → open Fit3 media controls → confirm Title/Artist → press Play/Next/Prev/FF/REW and watch the event log / Logcat (`Fit3MediaSession`). Media buttons should feel **snappy** (no multi-second Fit3 UI freeze); FGS status notification updates are debounced so Wearable is not flooded. **0.3.0+:** with session ON, press Fit3 volume ↑/↓ — expect `volumeUp`/`volumeDown` in the event log and `remVol` on Artist; turn session OFF and confirm phone media volume still works.
 
 **Fit3 verify (Phase 2):** In Galaxy Wearable, allow **Fit3 Proxy** notifications. Expand the ongoing status notification — tap `[재부팅]` / `[승인]` / `[스누즈]` and confirm the in-app event log. Tap **긴급 알림 테스트** on the phone dashboard — Fit3 should **vibrate/haptic** (not phone-shade-only); use alert actions / RemoteInput reply and confirm logs (`Fit3NotifAction`). Routine status updates must **not** keep buzzing the band.
 
 **0.2.1-phase2-fix:** Emergency alert uses explicit vibrate + WearableExtender + channel `fit3_alert_emergency_v2`; media hot-path avoids per-press FGS `notify()` storms.
 
 **0.2.2-phase2-fix:** Living-room / bedroom light brightness now updates on Fit3 FF/REW (and seek-mapped FF/REW): live Artist metadata + PlaybackState nudge; brightness logged and clamped 0–100.
+
+**0.3.0-volume-remap:** While MediaSession is ON, Fit3 volume UP/DOWN is remapped via `VolumeProviderCompat` (RELATIVE) to app events (`volumeUp`/`volumeDown`) + in-memory `volumeStep` shown in Artist `remVol` and the phone dashboard. On session OFF, `setPlaybackToLocal(STREAM_MUSIC)` restores normal phone media volume. Fit3 must actually send volume keys to the session (device-dependent).

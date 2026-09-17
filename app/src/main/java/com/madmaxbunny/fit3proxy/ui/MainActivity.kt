@@ -106,6 +106,8 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
             binding.tvPreviewTitle.text = preview.title
             binding.tvPreviewArtist.text = preview.artist
             binding.tvPreviewAlbum.text = preview.album
+            binding.tvLastVolumeEvent.text =
+                "step=${preview.volumeStep} | ${preview.lastVolumeEvent}"
         }
         sessionManager.sessionActive.observe(this) { active ->
             if (binding.switchSession.isChecked != active) {
