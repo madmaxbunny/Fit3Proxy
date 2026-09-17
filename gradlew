@@ -16,7 +16,7 @@ while [ -h "$app_path" ]; do
 done
 APP_HOME=$(cd "$(dirname "$app_path")" && pwd -P) || exit
 APP_NAME="Gradle"
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+DEFAULT_JVM_OPTS='-Xmx64m -Xms64m'
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 

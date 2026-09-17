@@ -53,7 +53,8 @@ class Fit3MediaSessionManager(
             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
             PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
             PlaybackStateCompat.ACTION_FAST_FORWARD or
-            PlaybackStateCompat.ACTION_REWIND
+            PlaybackStateCompat.ACTION_REWIND or
+            PlaybackStateCompat.ACTION_SEEK_TO
 
     var eventListener: EventListener? = null
 
@@ -103,15 +104,20 @@ class Fit3MediaSessionManager(
         }
 
         override fun onFastForward() {
-            slotRepository.brightnessDelta(+10)
-            publishMetadata()
-            logEventDeferred("onFastForward() → brightness +10%")
+            handleBrightnessDelta(+10, "onFastForward()")
         }
 
         override fun onRewind() {
-            slotRepository.brightnessDelta(-10)
-            publishMetadata()
-            logEventDeferred("onRewind() → brightness -10%")
+            handleBrightnessDelta(-10, "onRewind()")
+        }
+
+        /**
+         * Some Wearable/Fit3 bridges map FF/REW to seek instead of onFastForward/onRewind.
+         * Treat seek-past-current as +10 and seek-before as -10 brightness.
+         */
+        override fun onSeekTo(pos: Long) {
+            val delta = if (pos >= PLAYBACK_POSITION_MS) +10 else -10
+            handleBrightnessDelta(delta, "onSeekTo(pos=$pos)")
         }
     }
 
@@ -227,19 +233,48 @@ class Fit3MediaSessionManager(
         Log.d(TAG, "metadata title=${slot.title} artist=${slot.artist}")
     }
 
-    private fun publishPlaybackState() {
+    /**
+     * Apply brightness delta on the current slot, push live Artist metadata +
+     * a PlaybackState nudge so Fit3 refreshes (metadata-only updates are often ignored),
+     * and log the resulting brightness.
+     */
+    private fun handleBrightnessDelta(delta: Int, source: String) {
+        val before = slotRepository.current()
+        if (!before.supportsBrightness) {
+            publishPlaybackState(nudgePosition = true)
+            logEventDeferred(
+                "$source → brightness unsupported on ${before.title} (no-op)"
+            )
+            return
+        }
+        val slot = slotRepository.brightnessDelta(delta)
+        // Fit3/Wearable often caches Artist until PlaybackState changes — nudge position.
+        publishMetadata()
+        publishPlaybackState(nudgePosition = true)
+        logEventDeferred(
+            "$source → brightness ${if (delta >= 0) "+" else ""}$delta% → " +
+                "${slot.brightnessPercent}% (${slot.title})"
+        )
+    }
+
+    private fun publishPlaybackState(nudgePosition: Boolean = false) {
         val state = if (isPlayingVisual) {
             PlaybackStateCompat.STATE_PLAYING
         } else {
             PlaybackStateCompat.STATE_PAUSED
         }
+        val position = if (nudgePosition) {
+            PLAYBACK_POSITION_MS + (SystemClock.elapsedRealtime() % 500)
+        } else {
+            PLAYBACK_POSITION_MS
+        }
 
         val playbackState = PlaybackStateCompat.Builder()
             .setActions(transportActions)
-            .setState(state, PLAYBACK_POSITION_MS, if (isPlayingVisual) 1.0f else 0f)
+            .setState(state, position, if (isPlayingVisual) 1.0f else 0f)
             .build()
         mediaSession?.setPlaybackState(playbackState)
-        Log.d(TAG, "playbackState=$state")
+        Log.d(TAG, "playbackState=$state pos=$position")
     }
 
     /**
