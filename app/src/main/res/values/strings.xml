@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Fit3 Proxy</string>
-    <string name="dashboard_title">Fit3 Bridge — Phase 1</string>
+    <string name="dashboard_title">Fit3 Bridge — Phase 2</string>
     <string name="session_switch_label">MediaSession 가동</string>
     <string name="session_active">세션 활성</string>
     <string name="session_inactive">세션 중지</string>
@@ -10,9 +10,30 @@
     <string name="preview_album_label">Album (메뉴)</string>
     <string name="event_log_label">이벤트 로그</string>
     <string name="clear_log">로그 지우기</string>
-    <string name="notification_channel_name">Fit3 MediaSession</string>
-    <string name="notification_channel_desc">가상 미디어 세션 포그라운드 알림</string>
+
+    <!-- Status (silent) channel — FGS ongoing -->
+    <string name="status_channel_name">Fit3 상태 (무음)</string>
+    <string name="status_channel_desc">포그라운드 상태 알림. 주기 업데이트 시 핏3 진동 없음.</string>
+    <string name="notification_channel_name">Fit3 상태 (무음)</string>
+    <string name="notification_channel_desc">포그라운드 상태 알림. 주기 업데이트 시 핏3 진동 없음.</string>
     <string name="notification_title">Fit3 Proxy 세션 활성</string>
     <string name="notification_text">핏3 음악 컨트롤러로 제어 가능</string>
-    <string name="hint_wearable">Galaxy Wearable에서 이 앱의 음악 제어 권한을 허용하세요.</string>
+
+    <!-- Alert (emergency) channel -->
+    <string name="alert_channel_name">Fit3 긴급 알림</string>
+    <string name="alert_channel_desc">긴급 경고 — 핏3 햅틱(진동) 패턴 포함</string>
+    <string name="alert_title">⚠ 긴급 알림</string>
+    <string name="alert_body_test">테스트 긴급 알림입니다. Fit3에서 진동과 액션 버튼을 확인하세요.</string>
+    <string name="alert_section_title">긴급 알림 테스트 (Phase 2)</string>
+    <string name="alert_section_hint">고우선순위 채널로 알림을 보내 핏3 햅틱을 검증합니다. Galaxy Wearable에서 이 앱 알림을 허용하세요.</string>
+    <string name="btn_test_alert">긴급 알림 테스트 (Fit3 진동)</string>
+
+    <!-- Notification actions -->
+    <string name="action_reboot">재부팅</string>
+    <string name="action_approve">승인</string>
+    <string name="action_snooze">스누즈</string>
+    <string name="action_reply">답장</string>
+    <string name="action_reply_hint">빠른 답장…</string>
+
+    <string name="hint_wearable">Galaxy Wearable에서 이 앱의 알림·음악 제어 권한을 허용하세요.</string>
 </resources>

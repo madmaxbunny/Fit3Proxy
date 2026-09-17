@@ -14,12 +14,13 @@ import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.madmaxbunny.fit3proxy.Fit3ProxyApp
 import com.madmaxbunny.fit3proxy.R
+import com.madmaxbunny.fit3proxy.notification.NotificationActionReceiver
 import com.madmaxbunny.fit3proxy.session.Fit3MediaSessionManager
 import com.madmaxbunny.fit3proxy.ui.MainActivity
 
 /**
  * Foreground service with foregroundServiceType=mediaPlayback (Android 14).
- * Keeps MediaSession alive while the dashboard switch is on.
+ * Phase 2: silent status channel + interactive notification actions for Fit3.
  */
 class Fit3ProxyForegroundService : Service() {
 
@@ -49,7 +50,6 @@ class Fit3ProxyForegroundService : Service() {
             }
             else -> {
                 Log.i(TAG, "ACTION_START / default")
-                // Soft AudioFocus + session first so MediaStyle can attach token
                 sessionManager.startSession()
                 startAsForeground()
                 if (!observing) {
@@ -80,7 +80,7 @@ class Fit3ProxyForegroundService : Service() {
 
     private fun startAsForeground() {
         val slot = sessionManager.currentSlot()
-        val notification = buildNotification(slot.title, slot.artist)
+        val notification = buildStatusNotification(slot.title, slot.artist)
         ServiceCompat.startForeground(
             this,
             Fit3ProxyApp.NOTIFICATION_ID,
@@ -95,11 +95,12 @@ class Fit3ProxyForegroundService : Service() {
 
     private fun updateNotification(title: String, artist: String) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-        nm.notify(Fit3ProxyApp.NOTIFICATION_ID, buildNotification(title, artist))
+        // Silent channel + onlyAlertOnce → routine metadata updates must not vibrate Fit3
+        nm.notify(Fit3ProxyApp.NOTIFICATION_ID, buildStatusNotification(title, artist))
     }
 
-    private fun buildNotification(title: String, artist: String): android.app.Notification {
-        val builder = NotificationCompat.Builder(this, Fit3ProxyApp.CHANNEL_ID)
+    private fun buildStatusNotification(title: String, artist: String): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, Fit3ProxyApp.STATUS_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText("$title — $artist")
             .setSmallIcon(R.drawable.ic_notification)
@@ -107,16 +108,38 @@ class Fit3ProxyForegroundService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // Interactive actions (1–3) for Fit3 notification detail
             .addAction(
                 0,
-                getString(R.string.session_inactive),
-                stopPendingIntent()
+                getString(R.string.action_reboot),
+                actionPendingIntent(
+                    NotificationActionReceiver.ACTION_REBOOT,
+                    NotificationActionReceiver.REQ_REBOOT
+                )
+            )
+            .addAction(
+                0,
+                getString(R.string.action_approve),
+                actionPendingIntent(
+                    NotificationActionReceiver.ACTION_APPROVE,
+                    NotificationActionReceiver.REQ_APPROVE
+                )
+            )
+            .addAction(
+                0,
+                getString(R.string.action_snooze),
+                actionPendingIntent(
+                    NotificationActionReceiver.ACTION_SNOOZE,
+                    NotificationActionReceiver.REQ_SNOOZE
+                )
             )
 
         val token = sessionManager.getSessionToken()
         if (token != null) {
+            // Compact view stays MediaSession transport; expanded shows custom actions
             builder.setStyle(
                 MediaStyle()
                     .setMediaSession(token)
@@ -138,13 +161,13 @@ class Fit3ProxyForegroundService : Service() {
         )
     }
 
-    private fun stopPendingIntent(): PendingIntent {
-        val intent = Intent(this, Fit3ProxyForegroundService::class.java).apply {
-            action = ACTION_STOP
+    private fun actionPendingIntent(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(this, NotificationActionReceiver::class.java).apply {
+            this.action = action
         }
-        return PendingIntent.getService(
+        return PendingIntent.getBroadcast(
             this,
-            1,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -166,7 +189,6 @@ class Fit3ProxyForegroundService : Service() {
             val intent = Intent(context, Fit3ProxyForegroundService::class.java).apply {
                 action = ACTION_STOP
             }
-            // Prefer startService so ACTION_STOP is delivered even if not running
             try {
                 context.startService(intent)
             } catch (e: Exception) {

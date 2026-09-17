@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
@@ -32,5 +33,17 @@
             android:name=".service.Fit3ProxyForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".notification.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.madmaxbunny.fit3proxy.action.REBOOT" />
+                <action android:name="com.madmaxbunny.fit3proxy.action.APPROVE" />
+                <action android:name="com.madmaxbunny.fit3proxy.action.SNOOZE" />
+                <action android:name="com.madmaxbunny.fit3proxy.action.REPLY" />
+                <action android:name="com.madmaxbunny.fit3proxy.action.DISMISS_ALERT" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

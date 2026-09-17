@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.madmaxbunny.fit3proxy.Fit3ProxyApp
 import com.madmaxbunny.fit3proxy.R
 import com.madmaxbunny.fit3proxy.databinding.ActivityMainBinding
+import com.madmaxbunny.fit3proxy.notification.AlertNotifier
 import com.madmaxbunny.fit3proxy.service.Fit3ProxyForegroundService
 import com.madmaxbunny.fit3proxy.session.Fit3MediaSessionManager
 import java.text.SimpleDateFormat
@@ -20,12 +21,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Material dashboard: session switch, live metadata preview, scrolling event log.
+ * Material dashboard: session switch, live metadata preview, alert test, event log.
+ * Phase 2 adds emergency alert fire + Notification Action event logging.
  */
 class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var sessionManager: Fit3MediaSessionManager
+    private lateinit var app: Fit3ProxyApp
     private val logBuilder = StringBuilder()
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -41,15 +44,16 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
-        val app = application as Fit3ProxyApp
+        app = application as Fit3ProxyApp
         sessionManager = app.mediaSessionManager
         sessionManager.eventListener = this
 
         ensureNotificationPermission()
         bindUi()
         observeSession()
+        observeEventLog()
 
-        appendLog("대시보드 준비 완료 (Phase 1 MediaSession 프로토타입)")
+        appendLog("대시보드 준비 완료 (Phase 2 Notification Actions)")
         appendLog("슬롯 ${app.slotRepository.size}개 로드 (인메모리 데모)")
     }
 
@@ -66,15 +70,7 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
 
     private fun bindUi() {
         binding.switchSession.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                Fit3ProxyForegroundService.start(this)
-                binding.tvSessionStatus.setText(R.string.session_active)
-                appendLog("UI: 세션 ON → FGS + MediaSession 시작")
-            } else {
-                Fit3ProxyForegroundService.stop(this)
-                binding.tvSessionStatus.setText(R.string.session_inactive)
-                appendLog("UI: 세션 OFF → FGS + MediaSession 중지")
-            }
+            onSessionSwitch(isChecked)
         }
 
         binding.btnClearLog.setOnClickListener {
@@ -82,10 +78,26 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
             binding.tvEventLog.text = ""
         }
 
-        // Sync switch if service already running (process retained)
+        binding.btnTestAlert.setOnClickListener {
+            appendLog("UI: 긴급 알림 테스트 버튼 → AlertNotifier")
+            AlertNotifier.fireTestEmergencyAlert(this)
+        }
+
         if (sessionManager.isActive()) {
             binding.switchSession.isChecked = true
             binding.tvSessionStatus.setText(R.string.session_active)
+        }
+    }
+
+    private fun onSessionSwitch(isChecked: Boolean) {
+        if (isChecked) {
+            Fit3ProxyForegroundService.start(this)
+            binding.tvSessionStatus.setText(R.string.session_active)
+            appendLog("UI: 세션 ON → FGS + MediaSession 시작")
+        } else {
+            Fit3ProxyForegroundService.stop(this)
+            binding.tvSessionStatus.setText(R.string.session_inactive)
+            appendLog("UI: 세션 OFF → FGS + MediaSession 중지")
         }
     }
 
@@ -102,22 +114,16 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
                 binding.tvSessionStatus.setText(
                     if (active) R.string.session_active else R.string.session_inactive
                 )
-                bindSwitchListenerOnly()
+                binding.switchSession.setOnCheckedChangeListener { _, isChecked ->
+                    onSessionSwitch(isChecked)
+                }
             }
         }
     }
 
-    private fun bindSwitchListenerOnly() {
-        binding.switchSession.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                Fit3ProxyForegroundService.start(this)
-                binding.tvSessionStatus.setText(R.string.session_active)
-                appendLog("UI: 세션 ON → FGS + MediaSession 시작")
-            } else {
-                Fit3ProxyForegroundService.stop(this)
-                binding.tvSessionStatus.setText(R.string.session_inactive)
-                appendLog("UI: 세션 OFF → FGS + MediaSession 중지")
-            }
+    private fun observeEventLog() {
+        app.eventLogStore.events.observe(this) { message ->
+            appendLog(message)
         }
     }
 
