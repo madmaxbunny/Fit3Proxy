@@ -4,15 +4,15 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯; MQTT 없음. **0.5.0+** 인앱 업데이트·**0.6.0+** FCM/Push API는 HTTPS 접속)
 
-**현재 버전:** `0.6.0-fcm` (versionCode 12) — **Firebase Cloud Messaging** 토큰 + Push API(`api-push.devlion.org`) 등록 + 기존 인앱 업데이트·매트릭스/슬롯 토글/볼륨 분리 유지.
+**현재 버전:** `0.6.1-push-query` (versionCode 13) — Push 토큰 등록을 **GET+쿼리**로 핫픽스 + FCM/Push API·인앱 업데이트·매트릭스/슬롯 토글/볼륨 분리 유지.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.6.0-fcm-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.0/Fit3Proxy-0.6.0-fcm-debug.apk) (`v0.6.0` / versionName `0.6.0-fcm` / versionCode `12`)
-- **version.json:** [version.json](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.0/version.json) (인앱 업데이터가 `versionCode` 비교에 사용)
+- **현재 버전 다운로드:** [Fit3Proxy-0.6.1-push-query-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.1/Fit3Proxy-0.6.1-push-query-debug.apk) (`v0.6.1` / versionName `0.6.1-push-query` / versionCode `13`)
+- **version.json:** [version.json](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.1/version.json) (인앱 업데이터가 `versionCode` 비교에 사용)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -69,7 +69,7 @@ PackageInstaller / 시스템 설치 UI에서 **한 번 탭(확인)** 이 필요�
 릴리스 시 **APK와 `version.json`을 함께 첨부**해야 합니다. 예:
 
 ```json
-{ "versionCode": 12, "versionName": "0.6.0-fcm", "apk": "Fit3Proxy-0.6.0-fcm-debug.apk" }
+{ "versionCode": 13, "versionName": "0.6.1-push-query", "apk": "Fit3Proxy-0.6.1-push-query-debug.apk" }
 ```
 
 권한: `INTERNET`, `REQUEST_INSTALL_PACKAGES` + `FileProvider`.  
@@ -82,7 +82,7 @@ PackageInstaller / 시스템 설치 UI에서 **한 번 탭(확인)** 이 필요�
 
 | 항목 | 내용 |
 |---|---|
-| 등록 | `GET /api/v1/push/tokens` + JSON body `{userId, deviceToken, platform:"ANDROID"}` (`X-API-Key`) |
+| 등록 | `GET /api/v1/push/tokens?userId=&deviceToken=&platform=ANDROID` (쿼리만, body 없음; `X-API-Key`) |
 | 인증 | 헤더 `X-API-Key` (`local.properties`의 `PUSH_API_KEY` → `BuildConfig`) |
 | userId | 대시보드 EditText + SharedPreferences (기본 `fit3-demo-user`) |
 | UI | 잘린 FCM 토큰 · 등록 상태 · **토큰 등록** 버튼 · 런치/세션 ON 시 자동 시도 |
@@ -301,5 +301,7 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 **0.4.1-matrix:** Per-slot Play/Pause persistence — each row keeps `isOn`; toggle updates that slot + `STATE_PLAYING`/`STATE_PAUSED` immediately; Next/Prev restores PlaybackState from the newly selected slot’s saved `isOn` so Fit3 play/pause matches that row. Dashboard shows current-slot toggle ON/OFF. Volume/level still independent of toggle.
 
 **0.5.0-updater:** GitHub Releases 인앱 업데이트 — 런치 시 자동 확인, `version.json`로 versionCode 비교, APK 캐시 다운로드, PackageInstaller/FileProvider 설치 UI(사용자 확인 1회). 대시보드에 업데이트 카드·현재/최신 비교. 기존 매트릭스·슬롯 토글·볼륨 분리 유지.
+
+**0.6.1-push-query:** Push 토큰 등록 핫픽스 — `PushApiClient`가 OkHttp `HttpUrl.Builder` 쿼리 파라미터 + `GET`(body 없음)만 사용. POST/GET+JSON body 제거. 계약 문서(`docs/PUSH_TOKEN_INTEGRATION.md`) 갱신.
 
 **0.6.0-fcm:** Firebase Cloud Messaging + Push API 토큰 등록. `FirebaseMessagingService`로 토큰 갱신 시 재등록. 대시보드에 userId(SharedPreferences)·잘린 FCM 토큰·등록 상태·**토큰 등록** 버튼. `PUSH_API_KEY`는 `local.properties` → BuildConfig만 (커밋 금지). `google-services.json` 커밋. 기존 매트릭스·업데이트·볼륨 분리 유지.
