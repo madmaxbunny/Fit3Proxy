@@ -63,4 +63,17 @@
     <string name="update_need_permission">알 수 없는 앱 설치 허용이 필요합니다</string>
     <string name="update_compare_format">현재 %1$s (code %2$d) · 최신 %3$s (code %4$d)</string>
 
+
+    <!-- FCM / Push API token register (0.6.0+) -->
+    <string name="fcm_section_title">FCM 푸시 토큰</string>
+    <string name="fcm_section_hint">Firebase에서 기기 토큰을 받아 Push API(api-push.devlion.org)에 등록합니다. userId는 아래에서 바꿀 수 있습니다. API 키는 local.properties의 PUSH_API_KEY로 빌드에 주입됩니다.</string>
+    <string name="fcm_user_id_label">userId</string>
+    <string name="fcm_token_label">FCM 토큰</string>
+    <string name="fcm_token_placeholder">토큰 확인 중…</string>
+    <string name="fcm_status_label">등록 상태</string>
+    <string name="fcm_status_idle">대기</string>
+    <string name="fcm_status_missing_key">PUSH_API_KEY 필요 — local.properties에 설정 후 재빌드 (토큰은 아래 디버그용으로 표시)</string>
+    <string name="btn_register_token">토큰 등록</string>
+    <string name="fcm_toast_saved_userid">userId 저장됨</string>
+
 </resources>

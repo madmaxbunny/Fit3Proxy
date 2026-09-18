@@ -2,9 +2,9 @@
 
 ## 규칙
 
-- **앱 versionName:** `MAJOR.MINOR.PATCH[-suffix]` (예: `0.5.0-updater`)
-- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `11`)
-- **Git 태그:** `vMAJOR.MINOR.PATCH` (예: `v0.5.0`) — 소스의 `versionName`과 맞출 것
+- **앱 versionName:** `MAJOR.MINOR.PATCH[-suffix]` (예: `0.6.0-fcm`)
+- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `12`)
+- **Git 태그:** `vMAJOR.MINOR.PATCH` (예: `v0.6.0`) — 소스의 `versionName`과 맞출 것
 - **배포물:** GitHub Release에 debug/release APK **및** `version.json` 첨부. 최신 설치 링크는 `/releases/latest`
 
 ## version.json (인앱 업데이트용)
@@ -13,9 +13,9 @@
 
 ```json
 {
-  "versionCode": 11,
-  "versionName": "0.5.0-updater",
-  "apk": "Fit3Proxy-0.5.0-updater-debug.apk"
+  "versionCode": 12,
+  "versionName": "0.6.0-fcm",
+  "apk": "Fit3Proxy-0.6.0-fcm-debug.apk"
 }
 ```
 
@@ -33,6 +33,22 @@
 비시스템 안드로이드 앱은 PackageInstaller / ACTION_VIEW로도 **사용자 확인 없이 무음 설치할 수 없습니다.**  
 인앱 플로우는 자동 확인 → 자동 다운로드 → **설치 UI 한 번 탭**까지입니다.
 
+## 시크릿 / 로컬 설정
+
+| 파일 | 커밋? | 용도 |
+|---|---|---|
+| `local.properties` | **아니오** (`.gitignore`) | `sdk.dir`, **`PUSH_API_KEY`** (Push API `X-API-Key`) |
+| `app/google-services.json` | **예** (Firebase Android 관례) | FCM 클라이언트 설정 (`com.madmaxbunny.fit3proxy`) |
+
+빌드 시 `app/build.gradle.kts`가 `local.properties`의 `PUSH_API_KEY`를 `BuildConfig.PUSH_API_KEY`로 주입합니다.  
+키가 없으면 앱은 FCM 토큰만 로컬에 확보·대시보드에 표시하고, Push API 등록은 UI에 명확한 안내를 띄웁니다. **실제 API 키를 README·릴리스 노트·소스에 넣지 마세요.**
+
+```properties
+# local.properties (커밋 금지)
+sdk.dir=/path/to/Android/Sdk
+PUSH_API_KEY=your-key-here
+```
+
 ## 릴리스 체크리스트
 
 1. `app/build.gradle.kts`에서 `versionName` / `versionCode` 갱신
@@ -42,8 +58,8 @@
 5. 커밋 후 태그 푸시:
 
 ```bash
-git tag -a v0.5.0 -m "v0.5.0"
-git push origin v0.5.0
+git tag -a v0.6.0 -m "v0.6.0"
+git push origin v0.6.0
 ```
 
 6. GitHub → Releases에서 태그로 릴리스 생성하고 **APK + version.json** 업로드  
@@ -54,10 +70,10 @@ git push origin v0.5.0
 
 | 항목 | 값 |
 |---|---|
-| versionName | 0.5.0-updater |
-| versionCode | 11 |
-| 태그 | v0.5.0 |
-| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.5.0 |
+| versionName | 0.6.0-fcm |
+| versionCode | 12 |
+| 태그 | v0.6.0 |
+| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.6.0 |
 | API | https://api.github.com/repos/madmaxbunny/Fit3Proxy/releases/latest |
 
 ## GitHub Actions 자동화

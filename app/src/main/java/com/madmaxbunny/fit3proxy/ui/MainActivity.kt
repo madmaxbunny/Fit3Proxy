@@ -28,6 +28,9 @@ import com.madmaxbunny.fit3proxy.update.ApkDownloader
 import com.madmaxbunny.fit3proxy.update.ApkInstaller
 import com.madmaxbunny.fit3proxy.update.AppUpdateChecker
 import com.madmaxbunny.fit3proxy.update.ReleaseInfo
+import com.madmaxbunny.fit3proxy.push.PushApiClient
+import com.madmaxbunny.fit3proxy.push.PushPrefs
+import com.madmaxbunny.fit3proxy.push.PushTokenRegistrar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -39,7 +42,7 @@ import java.util.Locale
 
 /**
  * Material dashboard: session switch, live metadata preview, alert test, event log,
- * and GitHub Releases in-app update (check → download → one-tap install UI).
+ * GitHub Releases in-app update, and FCM token + Push API registration.
  *
  * Phone hardware volume keys are handled here (STREAM_MUSIC + FLAG_SHOW_UI) and
  * consumed so they do not reach the MediaSession VolumeProvider / remVol path.
@@ -59,6 +62,8 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
     private var latestRelease: ReleaseInfo? = null
     private var installReceiver: BroadcastReceiver? = null
     private var silentCheckDone = false
+    private var pushJob: Job? = null
+    private var currentFcmToken: String? = null
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -101,6 +106,10 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
 
         // Auto-check on launch (fail soft)
         checkForUpdate(userInitiated = false)
+
+        bindPushUi()
+        // Fetch FCM token; auto-register when API key + userId present
+        refreshFcmTokenAndMaybeRegister(userInitiated = false)
     }
 
     override fun onDestroy() {
@@ -115,6 +124,7 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
         }
         installReceiver = null
         updateJob?.cancel()
+        pushJob?.cancel()
         super.onDestroy()
     }
 
@@ -210,6 +220,8 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
             Fit3ProxyForegroundService.start(this)
             binding.tvSessionStatus.setText(R.string.session_active)
             appendLog("UI: 세션 ON → FGS + MediaSession 시작")
+            // Re-attempt Push API register on session start (idempotent upsert)
+            refreshFcmTokenAndMaybeRegister(userInitiated = false)
         } else {
             Fit3ProxyForegroundService.stop(this)
             binding.tvSessionStatus.setText(R.string.session_inactive)
@@ -404,6 +416,81 @@ class MainActivity : AppCompatActivity(), Fit3MediaSessionManager.EventListener 
                 getString(R.string.update_status_failed, "install intent"),
                 Toast.LENGTH_LONG
             ).show()
+        }
+    }
+
+
+    private fun bindPushUi() {
+        binding.etPushUserId.setText(PushPrefs.getUserId(this))
+        val cached = PushPrefs.getLastToken(this)
+        currentFcmToken = cached
+        binding.tvFcmToken.text = PushTokenRegistrar.truncateToken(cached)
+        val lastStatus = PushPrefs.getLastStatus(this)
+        if (lastStatus.isNotBlank()) {
+            binding.tvFcmStatus.text = lastStatus
+        }
+        if (!PushApiClient.hasApiKey()) {
+            binding.tvFcmStatus.setText(R.string.fcm_status_missing_key)
+            appendLog("FCM: PUSH_API_KEY 미설정 — 토큰만 로컬 표시, Push API 등록 불가")
+        } else {
+            appendLog("FCM: PUSH_API_KEY 빌드에 포함됨 — 토큰 등록 가능")
+        }
+
+        binding.btnRegisterToken.setOnClickListener {
+            persistUserIdFromField()
+            refreshFcmTokenAndMaybeRegister(userInitiated = true)
+        }
+
+        binding.etPushUserId.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) persistUserIdFromField()
+        }
+    }
+
+    private fun persistUserIdFromField() {
+        val userId = binding.etPushUserId.text?.toString()?.trim().orEmpty()
+            .ifBlank { PushPrefs.DEFAULT_USER_ID }
+        PushPrefs.setUserId(this, userId)
+        if (binding.etPushUserId.text?.toString()?.trim().isNullOrBlank()) {
+            binding.etPushUserId.setText(userId)
+        }
+    }
+
+    /**
+     * Fetch FCM token for debug display; register with Push API when key+userId present.
+     * On launch (userInitiated=false) auto-attempts register if possible.
+     */
+    private fun refreshFcmTokenAndMaybeRegister(userInitiated: Boolean) {
+        if (pushJob?.isActive == true) return
+        persistUserIdFromField()
+        binding.btnRegisterToken.isEnabled = false
+        if (userInitiated) {
+            binding.tvFcmStatus.text = "등록 중…"
+        } else if (binding.tvFcmStatus.text.isNullOrBlank()) {
+            binding.tvFcmStatus.text = "FCM 토큰 확인 중…"
+        }
+
+        pushJob = lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                PushTokenRegistrar.fetchAndMaybeRegister(
+                    this@MainActivity,
+                    registerIfPossible = true
+                )
+            }
+            currentFcmToken = outcome.token
+            binding.tvFcmToken.text = PushTokenRegistrar.truncateToken(outcome.token)
+            binding.tvFcmStatus.text = outcome.statusMessage
+            binding.btnRegisterToken.isEnabled = true
+            if (userInitiated) {
+                val toast = if (outcome.registered) {
+                    "토큰 등록 성공"
+                } else {
+                    outcome.statusMessage.take(80)
+                }
+                Toast.makeText(this@MainActivity, toast, Toast.LENGTH_SHORT).show()
+            }
+            appendLog(
+                "FCM: token=${PushTokenRegistrar.truncateToken(outcome.token)} | ${outcome.statusMessage}"
+            )
         }
     }
 

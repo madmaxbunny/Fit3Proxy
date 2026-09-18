@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "633180792764",
+    "firebase_url": "https://pushtest-bb5ab.firebaseio.com",
+    "project_id": "pushtest-bb5ab",
+    "storage_bucket": "pushtest-bb5ab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633180792764:android:a51f052940f51af38f2db9",
+        "android_client_info": {
+          "package_name": "com.khlim.push"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhHnv6-b9DT-8qs7-5v7LL0eTNvG62DsE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633180792764:android:bd0d31cc38b1c4bd8f2db9",
+        "android_client_info": {
+          "package_name": "com.madmaxbunny.fit3proxy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhHnv6-b9DT-8qs7-5v7LL0eTNvG62DsE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

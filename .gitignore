@@ -39,8 +39,9 @@ captures/
 *.keystore
 !debug.keystore
 
-# Google Services / secrets
-google-services.json
+# Secrets (do NOT commit API keys)
+# google-services.json is committed (standard for Firebase Android client config).
+# PUSH_API_KEY lives only in local.properties (already ignored above).
 *.env
 .env*
 secrets.properties
