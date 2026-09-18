@@ -82,7 +82,7 @@ PackageInstaller / 시스템 설치 UI에서 **한 번 탭(확인)** 이 필요�
 
 | 항목 | 내용 |
 |---|---|
-| 등록 | `GET /api/v1/push/tokens?userId=…&deviceToken=…&platform=ANDROID` |
+| 등록 | `GET /api/v1/push/tokens` + JSON body `{userId, deviceToken, platform:"ANDROID"}` (`X-API-Key`) |
 | 인증 | 헤더 `X-API-Key` (`local.properties`의 `PUSH_API_KEY` → `BuildConfig`) |
 | userId | 대시보드 EditText + SharedPreferences (기본 `fit3-demo-user`) |
 | UI | 잘린 FCM 토큰 · 등록 상태 · **토큰 등록** 버튼 · 런치/세션 ON 시 자동 시도 |

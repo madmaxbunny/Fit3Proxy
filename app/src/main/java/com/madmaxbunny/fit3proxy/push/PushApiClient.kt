@@ -2,12 +2,12 @@ package com.madmaxbunny.fit3proxy.push
 
 import android.util.Log
 import com.madmaxbunny.fit3proxy.BuildConfig
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * Registers / upserts FCM device tokens with the Push API
@@ -16,13 +16,20 @@ import java.nio.charset.StandardCharsets
  * Auth: header `X-API-Key` from [BuildConfig.PUSH_API_KEY]
  * (sourced from local.properties — never commit the real key).
  *
- * Spring-style GET: `/api/v1/push/tokens?userId=&deviceToken=&platform=ANDROID`
+ * Endpoint is GET `/api/v1/push/tokens` with a JSON body
+ * (`TokenRegisterRequest`: userId, deviceToken, platform). Query params alone
+ * are not accepted by the current server (@RequestBody).
  */
 object PushApiClient {
     private const val TAG = "PushApiClient"
     private const val PLATFORM = "ANDROID"
-    private const val CONNECT_TIMEOUT_MS = 15_000
-    private const val READ_TIMEOUT_MS = 20_000
+    private val JSON = "application/json; charset=utf-8".toMediaType()
+
+    private val http: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     sealed class Result {
         data class Success(val httpCode: Int, val body: String) : Result()
@@ -45,34 +52,31 @@ object PushApiClient {
 
         return try {
             val base = BuildConfig.PUSH_API_BASE_URL.trimEnd('/')
-            val qUser = URLEncoder.encode(userId, StandardCharsets.UTF_8.name())
-            val qToken = URLEncoder.encode(deviceToken, StandardCharsets.UTF_8.name())
-            val qPlatform = URLEncoder.encode(PLATFORM, StandardCharsets.UTF_8.name())
-            val url = URL(
-                "$base/api/v1/push/tokens?userId=$qUser&deviceToken=$qToken&platform=$qPlatform"
-            )
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("X-API-Key", key)
-                instanceFollowRedirects = true
-            }
-            try {
-                val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val body = stream?.use { input ->
-                    BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).readText()
-                }.orEmpty()
-                Log.i(TAG, "registerToken HTTP $code bodyLen=${body.length}")
-                if (code in 200..299) {
-                    Result.Success(code, body)
+            val url = "$base/api/v1/push/tokens"
+            val json = JSONObject()
+                .put("userId", userId)
+                .put("deviceToken", deviceToken)
+                .put("platform", PLATFORM)
+                .toString()
+            // Spring maps TokenRegisterRequest from JSON body on GET.
+            val body = json.toRequestBody(JSON)
+            val request = Request.Builder()
+                .url(url)
+                .get() // method overridden below via custom — OkHttp needs .method for GET+body
+                .method("GET", body)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .header("X-API-Key", key)
+                .build()
+
+            http.newCall(request).execute().use { resp ->
+                val respBody = resp.body?.string().orEmpty()
+                Log.i(TAG, "registerToken HTTP ${resp.code} bodyLen=${respBody.length}")
+                if (resp.isSuccessful) {
+                    Result.Success(resp.code, respBody)
                 } else {
-                    Result.Failed("HTTP $code: ${body.take(200)}", code)
+                    Result.Failed("HTTP ${resp.code}: ${respBody.take(200)}", resp.code)
                 }
-            } finally {
-                conn.disconnect()
             }
         } catch (e: Exception) {
             Log.w(TAG, "registerToken failed", e)

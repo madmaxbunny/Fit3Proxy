@@ -76,6 +76,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // MediaSessionCompat (Phase 1 preferred)
     implementation("androidx.media:media:1.7.0")
