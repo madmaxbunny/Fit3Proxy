@@ -24,89 +24,110 @@ object AlertNotifier {
         val appCtx = context.applicationContext
         val title = appCtx.getString(R.string.alert_title)
         val body = message ?: appCtx.getString(R.string.alert_body_test)
-        val nm = NotificationManagerCompat.from(appCtx)
+        fireEmergencyAlert(appCtx, title, body)
+    }
 
-        // Force a "new" delivery to Wearable (same-id updates are often silent on Fit3)
-        nm.cancel(Fit3ProxyApp.ALERT_NOTIFICATION_ID)
+    /**
+     * Show an emergency/high alert with custom title/body (FCM / manual).
+     * Soft-fails: never throws to the caller.
+     */
+    fun fireEmergencyAlert(context: Context, title: String, body: String) {
+        try {
+            val appCtx = context.applicationContext
+            val nm = NotificationManagerCompat.from(appCtx)
 
-        val builder = NotificationCompat.Builder(appCtx, Fit3ProxyApp.ALERT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setTicker(title) // helps some OEM bridges treat this as interruptive
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
-            .setSilent(false)
-            .setVibrate(Fit3ProxyApp.ALERT_VIBRATION_PATTERN)
-            .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
-            .setContentIntent(openAppPendingIntent(appCtx))
-            .setDeleteIntent(
+            // Force a "new" delivery to Wearable (same-id updates are often silent on Fit3)
+            nm.cancel(Fit3ProxyApp.ALERT_NOTIFICATION_ID)
+
+            val builder = NotificationCompat.Builder(appCtx, Fit3ProxyApp.ALERT_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setTicker(title) // helps some OEM bridges treat this as interruptive
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(false)
+                .setSilent(false)
+                .setVibrate(Fit3ProxyApp.ALERT_VIBRATION_PATTERN)
+                .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
+                .setContentIntent(openAppPendingIntent(appCtx))
+                .setDeleteIntent(
+                    actionPendingIntent(
+                        appCtx,
+                        NotificationActionReceiver.ACTION_DISMISS_ALERT,
+                        NotificationActionReceiver.REQ_DISMISS
+                    )
+                )
+                .extend(
+                    NotificationCompat.WearableExtender()
+                        .setContentIntentAvailableOffline(true)
+                )
+
+            // Interactive actions visible on Fit3 notification detail
+            builder.addAction(
+                0,
+                appCtx.getString(R.string.action_reboot),
                 actionPendingIntent(
                     appCtx,
-                    NotificationActionReceiver.ACTION_DISMISS_ALERT,
-                    NotificationActionReceiver.REQ_DISMISS
+                    NotificationActionReceiver.ACTION_REBOOT,
+                    NotificationActionReceiver.REQ_REBOOT
                 )
             )
-            .extend(
-                NotificationCompat.WearableExtender()
-                    .setContentIntentAvailableOffline(true)
+            builder.addAction(
+                0,
+                appCtx.getString(R.string.action_approve),
+                actionPendingIntent(
+                    appCtx,
+                    NotificationActionReceiver.ACTION_APPROVE,
+                    NotificationActionReceiver.REQ_APPROVE
+                )
+            )
+            builder.addAction(
+                0,
+                appCtx.getString(R.string.action_snooze),
+                actionPendingIntent(
+                    appCtx,
+                    NotificationActionReceiver.ACTION_SNOOZE,
+                    NotificationActionReceiver.REQ_SNOOZE
+                )
             )
 
-        // Interactive actions visible on Fit3 notification detail
-        builder.addAction(
-            0,
-            appCtx.getString(R.string.action_reboot),
-            actionPendingIntent(
-                appCtx,
-                NotificationActionReceiver.ACTION_REBOOT,
-                NotificationActionReceiver.REQ_REBOOT
+            // Optional RemoteInput quick-reply stub
+            val remoteInput = RemoteInput.Builder(NotificationActionReceiver.KEY_REPLY_TEXT)
+                .setLabel(appCtx.getString(R.string.action_reply_hint))
+                .build()
+            val replyAction = NotificationCompat.Action.Builder(
+                0,
+                appCtx.getString(R.string.action_reply),
+                replyPendingIntent(appCtx)
             )
-        )
-        builder.addAction(
-            0,
-            appCtx.getString(R.string.action_approve),
-            actionPendingIntent(
-                appCtx,
-                NotificationActionReceiver.ACTION_APPROVE,
-                NotificationActionReceiver.REQ_APPROVE
-            )
-        )
-        builder.addAction(
-            0,
-            appCtx.getString(R.string.action_snooze),
-            actionPendingIntent(
-                appCtx,
-                NotificationActionReceiver.ACTION_SNOOZE,
-                NotificationActionReceiver.REQ_SNOOZE
-            )
-        )
+                .addRemoteInput(remoteInput)
+                .setAllowGeneratedReplies(false)
+                .build()
+            builder.addAction(replyAction)
 
-        // Optional RemoteInput quick-reply stub
-        val remoteInput = RemoteInput.Builder(NotificationActionReceiver.KEY_REPLY_TEXT)
-            .setLabel(appCtx.getString(R.string.action_reply_hint))
-            .build()
-        val replyAction = NotificationCompat.Action.Builder(
-            0,
-            appCtx.getString(R.string.action_reply),
-            replyPendingIntent(appCtx)
-        )
-            .addRemoteInput(remoteInput)
-            .setAllowGeneratedReplies(false)
-            .build()
-        builder.addAction(replyAction)
+            nm.notify(Fit3ProxyApp.ALERT_NOTIFICATION_ID, builder.build())
 
-        nm.notify(Fit3ProxyApp.ALERT_NOTIFICATION_ID, builder.build())
+            // Nudge Fit3 media surface awake when session is already on (Wearable quirk)
+            try {
+                (appCtx as? Fit3ProxyApp)?.mediaSessionManager?.pulseForAlert()
+            } catch (_: Throwable) {
+                // soft no-op if session manager unreachable / off
+            }
 
-        // Nudge Fit3 media surface awake when session is already on (Wearable quirk)
-        (appCtx as? Fit3ProxyApp)?.mediaSessionManager?.pulseForAlert()
-
-        (appCtx as? Fit3ProxyApp)?.eventLogStore?.emit(
-            "AlertNotifier: 긴급 알림 발행 (channel=${Fit3ProxyApp.ALERT_CHANNEL_ID}, vibrate=on)"
-        )
+            try {
+                (appCtx as? Fit3ProxyApp)?.eventLogStore?.emit(
+                    "AlertNotifier: 긴급 알림 발행 (title=$title, channel=${Fit3ProxyApp.ALERT_CHANNEL_ID}, vibrate=on)"
+                )
+            } catch (_: Throwable) {
+                // ignore log failures
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("AlertNotifier", "fireEmergencyAlert soft-fail", t)
+        }
     }
 
     private fun openAppPendingIntent(context: Context): PendingIntent {

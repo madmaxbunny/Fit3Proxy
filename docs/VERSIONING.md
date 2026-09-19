@@ -2,9 +2,9 @@
 
 ## 규칙
 
-- **앱 versionName:** `MAJOR.MINOR.PATCH[-suffix]` (예: `0.6.1-push-query`)
-- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `13`)
-- **Git 태그:** `vMAJOR.MINOR.PATCH` (예: `v0.6.1`) — 소스의 `versionName`과 맞출 것
+- **앱 versionName:** `MAJOR.MINOR.PATCH[-suffix]` (예: `0.6.2-fcm-fit3`)
+- **앱 versionCode:** 정수, 매 스토어/사이드로드 배포마다 +1 (현재 `14`)
+- **Git 태그:** `vMAJOR.MINOR.PATCH` (예: `v0.6.2`) — 소스의 `versionName`과 맞출 것
 - **배포물:** GitHub Release에 debug/release APK **및** `version.json` 첨부. 최신 설치 링크는 `/releases/latest`
 
 ## version.json (인앱 업데이트용)
@@ -13,9 +13,9 @@
 
 ```json
 {
-  "versionCode": 13,
-  "versionName": "0.6.1-push-query",
-  "apk": "Fit3Proxy-0.6.1-push-query-debug.apk"
+  "versionCode": 14,
+  "versionName": "0.6.2-fcm-fit3",
+  "apk": "Fit3Proxy-0.6.2-fcm-fit3-debug.apk"
 }
 ```
 
@@ -58,8 +58,8 @@ PUSH_API_KEY=your-key-here
 5. 커밋 후 태그 푸시:
 
 ```bash
-git tag -a v0.6.1 -m "v0.6.1"
-git push origin v0.6.1
+git tag -a v0.6.2 -m "v0.6.2"
+git push origin v0.6.2
 ```
 
 6. GitHub → Releases에서 태그로 릴리스 생성하고 **APK + version.json** 업로드  
@@ -70,10 +70,10 @@ git push origin v0.6.1
 
 | 항목 | 값 |
 |---|---|
-| versionName | 0.6.1-push-query |
-| versionCode | 13 |
-| 태그 | v0.6.1 |
-| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.6.1 |
+| versionName | 0.6.2-fcm-fit3 |
+| versionCode | 14 |
+| 태그 | v0.6.2 |
+| 릴리스 | https://github.com/madmaxbunny/Fit3Proxy/releases/tag/v0.6.2 |
 | API | https://api.github.com/repos/madmaxbunny/Fit3Proxy/releases/latest |
 
 ## GitHub Actions 자동화

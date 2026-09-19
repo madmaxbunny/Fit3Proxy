@@ -26,8 +26,8 @@ android {
         applicationId = "com.madmaxbunny.fit3proxy"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.6.1-push-query"
+        versionCode = 14
+        versionName = "0.6.2-fcm-fit3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // From local.properties PUSH_API_KEY — never commit the real key.
