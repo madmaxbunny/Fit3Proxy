@@ -4,15 +4,15 @@
 
 본 저장소는 SOW **Phase 2: Notification Action 구현**까지 포함합니다. (인메모리 데모 슬롯; MQTT 없음. **0.5.0+** 인앱 업데이트·**0.6.0+** FCM/Push API는 HTTPS 접속)
 
-**현재 버전:** `0.6.2-fcm-fit3` (versionCode 14) — FCM 수신 시 긴급 알림(AlertNotifier) + MediaSession pulse로 Fit3 햅틱 브릿지 + Push 토큰/업데이트/매트릭스 유지.
+**현재 버전:** `0.6.3-docs` (versionCode 15) — 문서/안내 보강: Galaxy Wearable **Fit3 Proxy 알림 권한 필수** (없으면 FCM은 폰에만·Fit3 무반응 가능). 기능은 0.6.2와 동일.
 
 ## 폰에 설치하기 (APK)
 
 최신 설치 파일은 **GitHub Releases**에서 받습니다.
 
 - **최신 릴리스:** https://github.com/madmaxbunny/Fit3Proxy/releases/latest
-- **현재 버전 다운로드:** [Fit3Proxy-0.6.2-fcm-fit3-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.2/Fit3Proxy-0.6.2-fcm-fit3-debug.apk) (`v0.6.2` / versionName `0.6.2-fcm-fit3` / versionCode `14`)
-- **version.json:** [version.json](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.2/version.json) (인앱 업데이터가 `versionCode` 비교에 사용)
+- **현재 버전 다운로드:** [Fit3Proxy-0.6.3-docs-debug.apk](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.3/Fit3Proxy-0.6.3-docs-debug.apk) (`v0.6.3` / versionName `0.6.3-docs` / versionCode `15`)
+- **version.json:** [version.json](https://github.com/madmaxbunny/Fit3Proxy/releases/download/v0.6.3/version.json) (인앱 업데이터가 `versionCode` 비교에 사용)
 
 설치: APK를 폰으로 보낸 뒤 사이드로드 → Galaxy Wearable에서 Fit3 Proxy **알림·진동** 허용 → 앱에서 MediaSession 가동 ON.
 
@@ -69,7 +69,7 @@ PackageInstaller / 시스템 설치 UI에서 **한 번 탭(확인)** 이 필요�
 릴리스 시 **APK와 `version.json`을 함께 첨부**해야 합니다. 예:
 
 ```json
-{ "versionCode": 14, "versionName": "0.6.2-fcm-fit3", "apk": "Fit3Proxy-0.6.2-fcm-fit3-debug.apk" }
+{ "versionCode": 15, "versionName": "0.6.3-docs", "apk": "Fit3Proxy-0.6.3-docs-debug.apk" }
 ```
 
 권한: `INTERNET`, `REQUEST_INSTALL_PACKAGES` + `FileProvider`.  
@@ -112,6 +112,9 @@ PUSH_API_KEY=your-key-here
 | 6. 안전 | 전 구간 soft-fail — 서비스 크래시 없음 |
 
 검증: 설치 → Push API로(또는 Firebase 콘솔) 푸시 전송 → 폰 긴급 스타일 알림 + (Wearable 미러링/세션 ON 시) Fit3 햅틱.
+
+> **필수 (Galaxy Wearable):** **Fit3 Proxy 알림 권한**이 허용되어 있어야 합니다.  
+> 없으면 FCM은 **폰에만** 오고 **Fit3에 반응이 없을 수 있습니다** (미러링·햅틱 불가).
 
 ## 패키지 구조
 
@@ -185,6 +188,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ### B. Phase 2 — Notification Actions & 긴급 진동
 
 1. **Galaxy Wearable** → 알림 설정에서 **Fit3 Proxy** 알림이 **허용**인지 확인합니다.  
+   **필수:** 이 권한이 없으면 긴급/FCM 알림은 폰에만 오고 Fit3에 반응이 없을 수 있습니다.  
    (차단되어 있으면 핏3에 액션/진동이 전달되지 않습니다.)
 2. 세션 스위치를 ON 한 뒤, 폰 알림 셰이드에서 상태 알림을 펼칩니다.  
    `[재부팅]` / `[승인]` / `[스누즈]` 액션이 보여야 합니다.  
@@ -199,6 +203,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 5. 긴급 알림 상세에서 `[재부팅]`/`[승인]`/`[스누즈]`/`[답장]`을 눌러 로그를 확인합니다.  
    `[스누즈]` 또는 답장 시 긴급 알림이 해제됩니다.
 6. 상태 알림만 갱신될 때(Next/Prev로 메타데이터 변경) **핏3가 반복 진동하지 않는지** 확인합니다 (`setOnlyAlertOnce` + 무음 채널).
+
+### C. FCM → Fit3 (0.6.2+)
+
+1. **Galaxy Wearable**에서 **Fit3 Proxy 알림 권한**을 **허용**합니다 — **필수**.  
+   없으면 FCM은 폰에만 오고 Fit3에 반응이 없을 수 있습니다.
+2. MediaSession 가동 ON + Push 토큰 등록 완료.
+3. Push API 또는 Firebase 콘솔로 푸시 전송.
+4. 폰에 긴급 스타일 알림 + (권한·미러링 OK 시) Fit3 햅틱 확인.
 
 > 다른 음악 앱(Spotify 등)이 포커스를 가져가면 핏3 위젯이 그쪽으로 넘어갈 수 있습니다. 제어 모드일 때만 스위치를 켜세요.
 
@@ -317,6 +329,8 @@ Fit3 **Next/Prev**와 **볼륨 ↑/↓**를 독립 축으로 합성합니다.
 **0.4.1-matrix:** Per-slot Play/Pause persistence — each row keeps `isOn`; toggle updates that slot + `STATE_PLAYING`/`STATE_PAUSED` immediately; Next/Prev restores PlaybackState from the newly selected slot’s saved `isOn` so Fit3 play/pause matches that row. Dashboard shows current-slot toggle ON/OFF. Volume/level still independent of toggle.
 
 **0.5.0-updater:** GitHub Releases 인앱 업데이트 — 런치 시 자동 확인, `version.json`로 versionCode 비교, APK 캐시 다운로드, PackageInstaller/FileProvider 설치 UI(사용자 확인 1회). 대시보드에 업데이트 카드·현재/최신 비교. 기존 매트릭스·슬롯 토글·볼륨 분리 유지.
+
+**0.6.3-docs:** 문서/UI 안내만 — Galaxy Wearable **Fit3 Proxy 알림 권한 필수** (없으면 FCM은 폰에만·Fit3 무반응 가능). README 검증·FCM 섹션 + 앱 FCM/긴급 힌트. 기능 변경 없음.
 
 **0.6.2-fcm-fit3:** FCM → Fit3 브릿지 — `onMessageReceived`에서 `AlertNotifier` 긴급 채널 알림 + `pulseForAlert()`. notification/data 문구 해석, soft-fail. 토큰 등록·매트릭스·업데이트 유지.
 

@@ -31,7 +31,7 @@
     <string name="alert_title">⚠ 긴급 알림</string>
     <string name="alert_body_test">테스트 긴급 알림입니다. Fit3에서 진동과 액션 버튼을 확인하세요.</string>
     <string name="alert_section_title">긴급 알림 테스트 (Phase 2)</string>
-    <string name="alert_section_hint">고우선순위 채널로 알림을 보내 핏3 햅틱을 검증합니다. Galaxy Wearable에서 이 앱 알림을 허용하세요.</string>
+    <string name="alert_section_hint">고우선순위 채널로 알림을 보내 핏3 햅틱을 검증합니다. Galaxy Wearable에서 Fit3 Proxy 알림 권한이 필수입니다 — 없으면 FCM/긴급 알림은 폰에만 오고 Fit3에 반응이 없을 수 있습니다.</string>
     <string name="btn_test_alert">긴급 알림 테스트 (Fit3 진동)</string>
 
     <!-- Notification actions -->
@@ -66,7 +66,7 @@
 
     <!-- FCM / Push API token register (0.6.0+) -->
     <string name="fcm_section_title">FCM 푸시 토큰</string>
-    <string name="fcm_section_hint">Firebase에서 기기 토큰을 받아 Push API(api-push.devlion.org)에 등록합니다. userId는 아래에서 바꿀 수 있습니다. API 키는 local.properties의 PUSH_API_KEY로 빌드에 주입됩니다.</string>
+    <string name="fcm_section_hint">Firebase에서 기기 토큰을 받아 Push API(api-push.devlion.org)에 등록합니다. userId는 아래에서 바꿀 수 있습니다. API 키는 local.properties의 PUSH_API_KEY로 빌드에 주입됩니다.\n\n필수: Galaxy Wearable에서 Fit3 Proxy 알림 권한이 있어야 합니다. 없으면 FCM은 폰에만 오고 Fit3에 반응이 없을 수 있습니다.</string>
     <string name="fcm_user_id_label">userId</string>
     <string name="fcm_token_label">FCM 토큰</string>
     <string name="fcm_token_placeholder">토큰 확인 중…</string>
